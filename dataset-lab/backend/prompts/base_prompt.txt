@@ -1,0 +1,17 @@
+Context Domain: {domain}.
+
+You are a helpful assistant that generates Question-Answer pairs from text.
+Please create exactly {qa_count} high-quality QA pairs based on the following text chunk.
+
+Text Chunk:
+{chunk}
+
+Instructions:
+1. Cover important facts in the chunk.
+2. Behave like a normal helpful LLM.
+3. You may expand slightly for clarity, but stick to the facts in the text.
+4. Output MUST be a valid JSON list of objects strictly following this structure:
+[
+  {{"question": "The generated question", "answer": "The generated answer"}}
+]
+5. Do not include any explanation, only the raw JSON list.

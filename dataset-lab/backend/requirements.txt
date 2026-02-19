@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+requests
+sentence-transformers
+langchain
+tiktoken
+python-multipart
+chromadb

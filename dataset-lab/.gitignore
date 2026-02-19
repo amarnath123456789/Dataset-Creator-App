@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+.env
+.venv
+env/
+venv/
+*.log
+
+# VS Code
+.vscode/
+
+# Projects data (runtime generated files)
+../projects/
+
+# Frontend build output
+frontend/dist/
+frontend/node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
