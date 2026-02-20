@@ -2,7 +2,7 @@ import json
 import re
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Type, Optional
+from typing import List, Dict, Any
 from backend.models import GenerationConfig
 from backend.llm.base import LLMProvider
 from backend.llm.local import LocalLLM
@@ -17,8 +17,6 @@ class GenerationEngine:
     def _get_provider(self, config: GenerationConfig) -> LLMProvider:
         if config.provider == "openai":
             return OpenAILLM()
-        # elif config.provider == "anthropic":
-        #     return AnthropicLLM()
         else:
             return LocalLLM()
 
@@ -29,11 +27,29 @@ class GenerationEngine:
         with open(error_log, "a", encoding="utf-8") as f:
             f.write(message + "\n")
 
+    def _write_progress(self, project_path: Path, done: int, total: int, status: str):
+        """Write live progress info so the frontend can poll it."""
+        progress = {
+            "done": done,
+            "total": total,
+            "percent": round(done / total * 100, 1) if total else 0,
+            "status": status,
+        }
+        try:
+            with open(project_path / "progress.json", "w", encoding="utf-8") as f:
+                json.dump(progress, f)
+        except Exception:
+            pass
+
     def generate(self, project_path: Path, config: GenerationConfig):
         error_log = project_path / "error.log"
         # Clear any previous generation errors so old messages don't persist
         if error_log.exists():
             error_log.unlink()
+        # Clear previous progress
+        progress_path = project_path / "progress.json"
+        if progress_path.exists():
+            progress_path.unlink()
 
         # 1. Load Chunks
         chunks_path = project_path / "chunks.json"
@@ -57,19 +73,45 @@ class GenerationEngine:
         with open(prompt_path, 'r', encoding='utf-8') as f:
             base_prompt = f.read()
         
-        # 3. Initialize LLM and do a connectivity check on the first chunk
+        # 3. Initialize LLM
         llm = self._get_provider(config)
         
         qa_results = []
         chunk_errors = []
+        total = len(chunks)
+        
+        # Initialize qa_v1.json as empty list immediately so status endpoint sees it
+        qa_path = project_path / "qa_v1.json"
+        with open(qa_path, 'w', encoding='utf-8') as f:
+            json.dump([], f)
+        
+        self._write_progress(project_path, 0, total, "starting")
         
         # 4. Loop through chunks
         for i, chunk in enumerate(chunks):
+            # Check for stop signal
+            if (project_path / ".stop").exists():
+                logger.info(f"[Generation] Stop signal detected for {project_path.name}")
+                # Save partial results if any
+                if qa_results:
+                    partial_path = project_path / "qa_partial.json"
+                    with open(partial_path, 'w', encoding='utf-8') as f:
+                        json.dump(qa_results, f, indent=2)
+                
+                # Clean up lock files
+                if (project_path / ".running").exists():
+                    (project_path / ".running").unlink()
+                (project_path / ".stop").unlink()
+                
+                self._write_progress(project_path, i, total, "stopped")
+                return qa_results
+
             text = chunk['text']
+
             token_count = chunk.get('token_count', len(text))
             
-            # QA Count: 1 per 250-300 tokens
-            qa_count = max(1, token_count // 300)
+            # QA Count: density_factor per 300 tokens (default 1.0 = 1 pair per 300 tokens)
+            qa_count = max(1, int((token_count / 300) * config.qa_density_factor))
             
             # Formulate Prompt
             prompt = base_prompt.format(
@@ -84,6 +126,8 @@ class GenerationEngine:
             except AttributeError:
                 llm_config = config.dict()
 
+            self._write_progress(project_path, i, total, f"generating chunk {i+1}/{total}")
+
             # Call LLM
             try:
                 response_text = llm.generate(prompt, llm_config)
@@ -91,7 +135,7 @@ class GenerationEngine:
                 err = f"[Generation] LLM call failed for chunk {chunk['chunk_id']}: {e}"
                 chunk_errors.append(err)
                 logger.error(err)
-                # If first chunk fails, abort early — no point calling 600+ more times
+                # If first chunk fails, abort early — no point calling hundreds more times
                 if i == 0:
                     self._write_error(
                         project_path,
@@ -99,8 +143,9 @@ class GenerationEngine:
                         f"Provider: {config.provider}, Model: {config.model_name}\n"
                         f"Error: {e}\n\n"
                         f"If using Ollama, make sure 'ollama serve' is running and the model is pulled.\n"
-                        f"If using OpenAI, check that OPENAI_API_KEY is set in your .env file."
+                        f"If using OpenAI, check that your API key is set in Settings."
                     )
+                    self._write_progress(project_path, 0, total, "error")
                     return []
                 continue
             
@@ -114,6 +159,9 @@ class GenerationEngine:
                         for qa in qas:
                             qa['chunk_id'] = chunk['chunk_id']
                             qa_results.append(qa)
+                        # ── Incremental save after every successful chunk ──
+                        with open(qa_path, 'w', encoding='utf-8') as f:
+                            json.dump(qa_results, f, indent=2)
                     else:
                         err = f"[Generation] Unexpected JSON type for chunk {chunk['chunk_id']}: got {type(qas).__name__}"
                         chunk_errors.append(err)
@@ -127,10 +175,16 @@ class GenerationEngine:
                 chunk_errors.append(err)
                 logger.warning(err)
 
-        # 5. Save results (even if partial)
-        qa_path = project_path / "qa_v1.json"
+        # 5. Final save (covers edge case where last chunk had no new QAs)
         with open(qa_path, 'w', encoding='utf-8') as f:
             json.dump(qa_results, f, indent=2)
+
+        # Clean up any stale .stop file if generation finished normally
+        stop_path = project_path / ".stop"
+        if stop_path.exists():
+            stop_path.unlink()
+
+        self._write_progress(project_path, total, total, "done")
 
         # 6. Write a summary error if we got zero results
         if not qa_results:
@@ -141,7 +195,6 @@ class GenerationEngine:
             )
             self._write_error(project_path, error_summary)
         elif chunk_errors:
-            # Partial success — log errors but don't overwrite error.log with fatal message
             logger.warning(f"[Generation] {len(chunk_errors)} chunk(s) failed, {len(qa_results)} QA pairs saved.")
             
         return qa_results

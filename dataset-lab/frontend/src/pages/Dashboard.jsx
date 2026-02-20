@@ -45,55 +45,76 @@ export default function Dashboard() {
     };
 
     return (
-        <div className="max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold mb-8">Projects</h1>
+        <div className="max-w-6xl mx-auto">
+            <h1 className="text-4xl font-light text-neu-text mb-12 tracking-tight">Console <span className="text-neu-dim font-thin">/ Projects</span></h1>
 
-            <form onSubmit={handleCreate} className="mb-8 flex gap-4 max-w-md">
-                <input
-                    type="text"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    placeholder="New Project Name"
-                    className="flex-1 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
+            <form onSubmit={handleCreate} className="mb-16 flex gap-8 max-w-2xl relative z-10 p-2">
+                <div className="relative flex-1 group">
+                    <input
+                        type="text"
+                        value={newProjectName}
+                        onChange={(e) => setNewProjectName(e.target.value)}
+                        placeholder="Nomenclature for new protocol..."
+                        className="neu-input h-14 pl-6 text-lg placeholder-neu-dim/30 bg-neu-base focus:text-neu-accent"
+                    />
+                    <div className="absolute inset-0 rounded-2xl pointer-events-none border border-white/5 group-hover:border-white/10 transition-colors"></div>
+                </div>
                 <button
                     type="submit"
                     disabled={createMutation.isPending}
-                    className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
+                    className="neu-btn neu-btn-primary h-14 px-8 gap-3 rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-black/20"
                 >
-                    <FolderPlus size={20} />
-                    Create
+                    <FolderPlus size={22} strokeWidth={2} />
+                    <span className="font-semibold tracking-wide">INITIALIZE</span>
                 </button>
             </form>
 
             {isLoading ? (
-                <div className="text-gray-500">Loading projects...</div>
+                <div className="text-neu-dim animate-pulse font-mono tracking-widest text-sm uppercase">Loading sector map...</div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
                     {projects.map((name) => (
-                        <div key={name} className="relative group">
+                        <div key={name} className="relative group perspective-1000">
                             <Link
                                 to={`/project/${name}`}
-                                className="bg-white p-6 rounded-xl shadow-sm border hover:shadow-md transition-shadow flex items-center gap-4 w-full"
+                                className="neu-plate p-8 flex flex-col gap-6 w-full h-full min-h-[220px] group-hover:-translate-y-2 group-hover:shadow-[0_20px_40px_rgba(0,0,0,0.4)] transition-all duration-500 ease-out relative overflow-hidden"
                             >
-                                <div className="bg-blue-100 p-3 rounded-lg group-hover:bg-blue-200 transition-colors">
-                                    <Folder className="text-blue-600" size={24} />
+                                <div className="absolute top-0 right-0 p-32 bg-neu-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
+
+                                <div className="flex items-start justify-between z-10">
+                                    <div className="w-16 h-16 rounded-2xl neu-inset flex items-center justify-center text-neu-dim group-hover:text-neu-accent transition-colors duration-300 shadow-inner border border-white/5">
+                                        <Folder size={32} strokeWidth={1.5} />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-neu-dim/20 group-hover:bg-neu-accent group-hover:shadow-[0_0_8px_rgba(255,107,0,0.8)] transition-all duration-500 delay-100"></div>
+                                        <div className="w-2 h-2 rounded-full bg-neu-dim/20 group-hover:bg-neu-accent group-hover:shadow-[0_0_8px_rgba(255,107,0,0.8)] transition-all duration-500 delay-200"></div>
+                                    </div>
                                 </div>
-                                <span className="font-semibold text-lg">{name}</span>
+
+                                <div className="z-10 mt-auto">
+                                    <span className="text-2xl font-medium text-neu-text tracking-tight block truncate group-hover:text-white transition-colors" title={name}>{name}</span>
+                                    <span className="text-xs font-mono text-neu-dim/60 mt-2 block uppercase tracking-widest">Active Protocol</span>
+                                </div>
                             </Link>
+
+                            {/* Delete Button - Floating Orb */}
                             <button
                                 onClick={(e) => handleDelete(e, name)}
                                 disabled={deleteMutation.isPending}
-                                title="Delete project"
-                                className="absolute top-3 right-3 p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
+                                title="Purge Protocol"
+                                className="absolute -top-3 -right-3 w-10 h-10 rounded-full bg-neu-base shadow-[5px_5px_10px_#16191c,-5px_-5px_10px_#2c3036] flex items-center justify-center text-neu-dim hover:text-red-500 hover:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.5)] opacity-0 group-hover:opacity-100 transition-all duration-300 z-20 hover:scale-110"
                             >
-                                <Trash2 size={16} />
+                                <Trash2 size={16} strokeWidth={2} />
                             </button>
                         </div>
                     ))}
                     {projects.length === 0 && (
-                        <div className="col-span-full text-center py-12 text-gray-400 bg-gray-50 rounded-xl border border-dashed">
-                            No projects yet. Create one to get started.
+                        <div className="col-span-full py-32 text-center rounded-3xl border-2 border-dashed border-neu-dim/10 bg-neu-base/50">
+                            <div className="w-24 h-24 mx-auto rounded-full neu-inset flex items-center justify-center text-neu-dim/20 mb-8 shadow-inner">
+                                <FolderPlus size={40} strokeWidth={1} />
+                            </div>
+                            <p className="text-neu-dim font-light text-xl">Sector Empty</p>
+                            <p className="text-neu-dim/40 text-sm mt-2 font-mono uppercase tracking-widest">Initialize new protocol to begin</p>
                         </div>
                     )}
                 </div>

@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectApi } from '../api/api';
 import {
     RefreshCw, Copy, ChevronDown, ChevronRight,
     Code2, ChevronsDownUp, ChevronsUpDown,
     CheckCircle, AlertCircle, Clock, Layers, MessageSquare,
-    FileText, BarChart2, Loader2
+    FileText, BarChart2, Loader2, Check
 } from 'lucide-react';
 
 function copyToClipboard(text) {
@@ -27,30 +27,31 @@ function Section({ title, icon: Icon, badge, children, copyData, loading }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
+
     return (
-        <div className="bg-white rounded-xl shadow-sm border mb-6">
-            <div className="flex items-center justify-between px-6 py-4 border-b">
-                <div className="flex items-center gap-3">
-                    <div className="bg-blue-50 p-2 rounded-lg">
-                        <Icon size={18} className="text-blue-600" />
+        <div className="neu-section">
+            <div className="neu-section-header">
+                <div className="flex items-center gap-4">
+                    {/* Icon Orb */}
+                    <div className="w-9 h-9 rounded-xl neu-inset flex items-center justify-center text-neu-accent flex-shrink-0">
+                        <Icon size={17} strokeWidth={2} />
                     </div>
-                    <h3 className="font-semibold text-gray-800 text-lg">{title}</h3>
-                    {loading && <Loader2 size={15} className="animate-spin text-blue-400" />}
+                    <h3 className="font-semibold text-neu-text text-base tracking-tight">{title}</h3>
+                    {loading && <Loader2 size={14} className="animate-spin text-neu-dim ml-1" />}
                     {badge !== undefined && !loading && (
-                        <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">{badge}</span>
+                        <span className="neu-badge neu-badge-accent">{badge}</span>
                     )}
                 </div>
                 {copyData !== undefined && !loading && (
-                    <button
-                        onClick={handleCopy}
-                        className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition"
-                    >
-                        <Copy size={13} />
-                        {copied ? 'Copied!' : 'Copy'}
+                    <button onClick={handleCopy} className="neu-btn-sm">
+                        {copied
+                            ? <><Check size={11} className="text-green-400" /> Copied</>
+                            : <><Copy size={11} /> Copy</>
+                        }
                     </button>
                 )}
             </div>
-            <div className="p-6">{children}</div>
+            <div className="neu-section-body">{children}</div>
         </div>
     );
 }
@@ -58,12 +59,14 @@ function Section({ title, icon: Icon, badge, children, copyData, loading }) {
 // ─── Empty / Waiting State ────────────────────────────────────────────────────
 function EmptyState({ message, waiting }) {
     return (
-        <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-            {waiting
-                ? <Loader2 size={28} className="mb-3 animate-spin text-blue-300" />
-                : <AlertCircle size={28} className="mb-3 text-gray-300" />
-            }
-            <p className="text-sm">{message}</p>
+        <div className="flex flex-col items-center justify-center py-12">
+            <div className="w-16 h-16 rounded-full neu-inset flex items-center justify-center mb-4">
+                {waiting
+                    ? <Loader2 size={24} className="animate-spin text-neu-dim" />
+                    : <AlertCircle size={24} className="text-neu-dim/40" />
+                }
+            </div>
+            <p className="text-sm text-neu-dim font-mono tracking-wide">{message}</p>
         </div>
     );
 }
@@ -71,36 +74,39 @@ function EmptyState({ message, waiting }) {
 // ─── Stat Pill ────────────────────────────────────────────────────────────────
 function StatPill({ label, value, highlight }) {
     return (
-        <div className={`flex flex-col items-center px-4 py-3 rounded-xl border ${highlight ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'}`}>
-            <span className={`text-xl font-bold ${highlight ? 'text-blue-700' : 'text-gray-800'}`}>{value ?? '—'}</span>
-            <span className="text-xs text-gray-500 mt-0.5">{label}</span>
+        <div className={`neu-stat ${highlight ? 'ring-1 ring-neu-accent/20' : ''}`}>
+            <span className={`neu-stat-value ${highlight ? 'text-neu-accent' : ''}`}>{value ?? '—'}</span>
+            <span className="neu-stat-label">{label}</span>
         </div>
     );
 }
 
-// ─── Stage Progress Bar ───────────────────────────────────────────────────────
+// ─── Stage Progress ───────────────────────────────────────────────────────────
 function StageProgress({ status }) {
     const stages = [
-        { key: 'has_raw', label: 'Upload', color: 'bg-blue-500' },
-        { key: 'has_cleaned', label: 'Cleaning', color: 'bg-purple-500' },
-        { key: 'has_chunks', label: 'Chunking', color: 'bg-orange-500' },
-        { key: 'has_qa', label: 'QA Pairs', color: 'bg-green-500' },
+        { key: 'has_raw', label: 'Upload' },
+        { key: 'has_cleaned', label: 'Cleaning' },
+        { key: 'has_chunks', label: 'Chunking' },
+        { key: 'has_qa', label: 'QA Gen' },
     ];
+
     return (
-        <div className="flex items-center gap-1 mb-5">
+        <div className="flex items-center gap-1 mb-8">
             {stages.map((s, i) => {
                 const done = !!status?.[s.key];
                 const isLast = i === stages.length - 1;
                 return (
                     <React.Fragment key={s.key}>
-                        <div className="flex flex-col items-center gap-1">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold transition-all ${done ? s.color : 'bg-gray-200'}`}>
+                        <div className="flex flex-col items-center gap-2">
+                            <div className={`stage-node ${done ? 'stage-node-done' : 'stage-node-pending'}`}>
                                 {done ? <CheckCircle size={16} /> : <span>{i + 1}</span>}
                             </div>
-                            <span className={`text-xs font-medium ${done ? 'text-gray-700' : 'text-gray-400'}`}>{s.label}</span>
+                            <span className={`text-[10px] font-bold tracking-widest uppercase ${done ? 'text-neu-accent' : 'text-neu-dim/40'}`}>
+                                {s.label}
+                            </span>
                         </div>
                         {!isLast && (
-                            <div className={`flex-1 h-1 rounded mb-4 transition-all ${done ? s.color : 'bg-gray-200'}`} />
+                            <div className={`stage-connector ${done ? 'stage-connector-done' : 'stage-connector-pending'}`} />
                         )}
                     </React.Fragment>
                 );
@@ -123,12 +129,6 @@ function MetadataSection({ status, projectName }) {
                 : status?.has_raw ? 'Upload'
                     : null;
 
-    const statusColor = overallStatus === 'Completed'
-        ? 'text-green-600 bg-green-50 border-green-200'
-        : overallStatus === 'In Progress'
-            ? 'text-yellow-600 bg-yellow-50 border-yellow-200'
-            : 'text-gray-500 bg-gray-50 border-gray-200';
-
     if (!hasAny) {
         return (
             <Section title="Pipeline Metadata" icon={BarChart2}>
@@ -141,20 +141,29 @@ function MetadataSection({ status, projectName }) {
         <Section title="Pipeline Metadata" icon={BarChart2} copyData={JSON.stringify(status, null, 2)}>
             <StageProgress status={status} />
 
-            <div className="flex flex-wrap gap-3 mb-5">
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm font-medium ${statusColor}`}>
-                    {overallStatus === 'Completed' ? <CheckCircle size={14} /> : <Clock size={14} />}
+            <div className="flex flex-wrap gap-3 mb-6">
+                {/* Status badge */}
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold tracking-widest uppercase neu-inset ${overallStatus === 'Completed' ? 'text-green-400' :
+                    overallStatus === 'In Progress' ? 'text-neu-accent' : 'text-neu-dim'
+                    }`}>
+                    {overallStatus === 'Completed'
+                        ? <div className="led led-green animate-pulse" />
+                        : overallStatus === 'In Progress'
+                            ? <div className="led led-on animate-pulse" />
+                            : <div className="led led-off" />
+                    }
                     {overallStatus}
                 </div>
+
                 {currentStage && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm font-medium bg-purple-50 border-purple-200 text-purple-700">
-                        <Layers size={14} />
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold tracking-widest uppercase neu-inset text-neu-dim">
+                        <Layers size={12} />
                         Stage: {currentStage}
                     </div>
                 )}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <StatPill label="Raw Text" value={status?.has_raw ? '✓' : '✗'} />
                 <StatPill label="Cleaned" value={status?.has_cleaned ? '✓' : '✗'} />
                 <StatPill label="Chunks" value={status?.chunk_count ?? 0} highlight={!!status?.has_chunks} />
@@ -175,32 +184,9 @@ function CleaningSection({ projectName, hasCleaned }) {
         staleTime: 30_000,
     });
 
-    const isWaiting = !hasCleaned;
-    const loading = isLoading && hasCleaned;
-
-    if (isWaiting) {
-        return (
-            <Section title="Cleaning Preview" icon={FileText}>
-                <EmptyState waiting message="Waiting for cleaning stage to complete..." />
-            </Section>
-        );
-    }
-
-    if (loading) {
-        return (
-            <Section title="Cleaning Preview" icon={FileText} loading>
-                <EmptyState waiting message="Loading cleaned text..." />
-            </Section>
-        );
-    }
-
-    if (!data) {
-        return (
-            <Section title="Cleaning Preview" icon={FileText}>
-                <EmptyState message="No cleaned text available." />
-            </Section>
-        );
-    }
+    if (!hasCleaned) return <Section title="Cleaning Preview" icon={FileText}><EmptyState waiting message="Waiting for cleaning stage to complete…" /></Section>;
+    if (isLoading) return <Section title="Cleaning Preview" icon={FileText} loading><EmptyState waiting message="Loading cleaned text…" /></Section>;
+    if (!data) return <Section title="Cleaning Preview" icon={FileText}><EmptyState message="No cleaned text available." /></Section>;
 
     const { cleaned_text, cleaned_length, raw_length } = data;
     const preview = cleaned_text.slice(0, 1000);
@@ -214,37 +200,30 @@ function CleaningSection({ projectName, hasCleaned }) {
             copyData={cleaned_text}
             loading={isFetching && !isLoading}
         >
-            <div className="grid grid-cols-3 gap-3 mb-5">
+            <div className="grid grid-cols-3 gap-4 mb-6">
                 <StatPill label="Raw Length" value={raw_length?.toLocaleString() ?? '—'} />
                 <StatPill label="Cleaned Length" value={cleaned_length?.toLocaleString() ?? '—'} highlight />
                 <StatPill label="Chars Removed" value={diff !== null ? diff.toLocaleString() : '—'} />
             </div>
 
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+            <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] text-neu-dim font-bold uppercase tracking-widest">
                     First {Math.min(preview.length, 1000)} characters
                 </span>
-                <button
-                    onClick={() => setShowRaw(!showRaw)}
-                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition"
-                >
-                    <Code2 size={12} />
+                <button onClick={() => setShowRaw(!showRaw)} className="neu-btn-sm">
+                    <Code2 size={11} />
                     {showRaw ? 'Text View' : 'Raw JSON'}
                 </button>
             </div>
 
-            {showRaw ? (
-                <pre className="bg-gray-900 text-green-400 text-xs p-4 rounded-lg overflow-auto max-h-64 font-mono whitespace-pre-wrap">
-                    {JSON.stringify(data, null, 2)}
-                </pre>
-            ) : (
-                <textarea
+            {showRaw
+                ? <pre className="neu-terminal">{JSON.stringify(data, null, 2)}</pre>
+                : <textarea
                     readOnly
-                    value={preview + (cleaned_text.length > 1000 ? '\n\n... (truncated)' : '')}
-                    className="w-full h-48 p-4 bg-gray-50 border rounded-lg text-sm font-mono resize-none text-gray-700 focus:outline-none"
-                    style={{ wordWrap: 'break-word', whiteSpace: 'pre-wrap' }}
+                    value={preview + (cleaned_text.length > 1000 ? '\n\n… (truncated)' : '')}
+                    className="neu-textarea h-48 resize-none"
                 />
-            )}
+            }
         </Section>
     );
 }
@@ -261,46 +240,19 @@ function ChunkingSection({ projectName, hasChunks }) {
         staleTime: 30_000,
     });
 
-    const isWaiting = !hasChunks;
-    const loading = isLoading && hasChunks;
-
-    if (isWaiting) {
-        return (
-            <Section title="Chunking Preview" icon={Layers}>
-                <EmptyState waiting message="Waiting for chunking stage to complete..." />
-            </Section>
-        );
-    }
-
-    if (loading) {
-        return (
-            <Section title="Chunking Preview" icon={Layers} loading>
-                <EmptyState waiting message="Loading chunks..." />
-            </Section>
-        );
-    }
+    if (!hasChunks) return <Section title="Chunking Preview" icon={Layers}><EmptyState waiting message="Waiting for chunking stage to complete…" /></Section>;
+    if (isLoading) return <Section title="Chunking Preview" icon={Layers} loading><EmptyState waiting message="Loading chunks…" /></Section>;
 
     const chunks = data?.chunks ?? [];
-    if (chunks.length === 0) {
-        return (
-            <Section title="Chunking Preview" icon={Layers}>
-                <EmptyState message="No chunks available." />
-            </Section>
-        );
-    }
+    if (chunks.length === 0) return <Section title="Chunking Preview" icon={Layers}><EmptyState message="No chunks available." /></Section>;
 
     const first5 = chunks.slice(0, 5);
     const sizes = chunks.map(c => (typeof c === 'string' ? c.length : c.text?.length ?? JSON.stringify(c).length));
     const avgSize = Math.round(sizes.reduce((a, b) => a + b, 0) / sizes.length);
     const minSize = Math.min(...sizes);
     const maxSize = Math.max(...sizes);
-
     const allExpanded = first5.every((_, i) => expandedChunks[i]);
-    const toggleAll = () => {
-        const next = {};
-        first5.forEach((_, i) => { next[i] = !allExpanded; });
-        setExpandedChunks(next);
-    };
+    const toggleAll = () => { const next = {}; first5.forEach((_, i) => { next[i] = !allExpanded; }); setExpandedChunks(next); };
     const toggleChunk = (i) => setExpandedChunks(prev => ({ ...prev, [i]: !prev[i] }));
 
     return (
@@ -311,111 +263,148 @@ function ChunkingSection({ projectName, hasChunks }) {
             copyData={chunks.slice(0, 5)}
             loading={isFetching && !isLoading}
         >
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
                 <StatPill label="Total Chunks" value={chunks.length} highlight />
                 <StatPill label="Avg Size" value={`${avgSize} ch`} />
                 <StatPill label="Min Size" value={`${minSize} ch`} />
                 <StatPill label="Max Size" value={`${maxSize} ch`} />
             </div>
 
-            <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+            <div className="flex items-center justify-between mb-4">
+                <span className="text-[10px] text-neu-dim font-bold uppercase tracking-widest">
                     First {first5.length} of {chunks.length} chunks
                 </span>
                 <div className="flex gap-2">
-                    <button
-                        onClick={toggleAll}
-                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition"
-                    >
-                        {allExpanded ? <ChevronsDownUp size={12} /> : <ChevronsUpDown size={12} />}
-                        {allExpanded ? 'Collapse All' : 'Expand All'}
+                    <button onClick={toggleAll} className="neu-btn-sm">
+                        {allExpanded ? <ChevronsDownUp size={11} /> : <ChevronsUpDown size={11} />}
+                        {allExpanded ? 'Collapse' : 'Expand'} All
                     </button>
-                    <button
-                        onClick={() => setShowRaw(!showRaw)}
-                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition"
-                    >
-                        <Code2 size={12} />
+                    <button onClick={() => setShowRaw(!showRaw)} className="neu-btn-sm">
+                        <Code2 size={11} />
                         {showRaw ? 'List View' : 'Raw JSON'}
                     </button>
                 </div>
             </div>
 
-            {showRaw ? (
-                <pre className="bg-gray-900 text-green-400 text-xs p-4 rounded-lg overflow-auto max-h-72 font-mono whitespace-pre-wrap">
-                    {JSON.stringify(first5, null, 2)}
-                </pre>
-            ) : (
-                <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                    {first5.map((chunk, i) => {
-                        const text = typeof chunk === 'string' ? chunk : chunk.text ?? JSON.stringify(chunk);
-                        const size = text.length;
-                        const isOpen = !!expandedChunks[i];
-                        return (
-                            <div key={i} className="border rounded-lg overflow-hidden">
-                                <button
-                                    onClick={() => toggleChunk(i)}
-                                    className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition text-left"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        {isOpen ? <ChevronDown size={15} className="text-gray-400" /> : <ChevronRight size={15} className="text-gray-400" />}
-                                        <span className="text-sm font-medium text-gray-700">Chunk {i + 1}</span>
+            {showRaw
+                ? <pre className="neu-terminal">{JSON.stringify(first5, null, 2)}</pre>
+                : (
+                    <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                        {first5.map((chunk, i) => {
+                            const text = typeof chunk === 'string' ? chunk : chunk.text ?? JSON.stringify(chunk);
+                            const size = text.length;
+                            const isOpen = !!expandedChunks[i];
+                            return (
+                                <div key={i} className="neu-chunk">
+                                    <div onClick={() => toggleChunk(i)} className="neu-chunk-header">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${isOpen ? 'bg-neu-accent text-white shadow-[0_0_8px_rgba(255,107,0,0.5)]' : 'neu-inset text-neu-dim'
+                                                }`}>
+                                                {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                            </div>
+                                            <span className="text-sm font-medium text-neu-text">Fragment {i + 1}</span>
+                                        </div>
+                                        <span className="neu-badge neu-badge-accent">{size} chars</span>
                                     </div>
-                                    <span className="text-xs bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full">
-                                        {size} chars
-                                    </span>
-                                </button>
-                                {isOpen && (
-                                    <div className="px-4 py-3 bg-white border-t">
-                                        <p className="text-sm text-gray-700 font-mono whitespace-pre-wrap leading-relaxed">{text}</p>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+                                    {isOpen && (
+                                        <div className="px-5 py-4 border-t border-white/[0.03]">
+                                            <p className="text-xs text-neu-dim font-mono whitespace-pre-wrap leading-relaxed">{text}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )
+            }
         </Section>
     );
 }
 
+// ─── Generation Progress Bar ──────────────────────────────────────────────────
+function GenerationProgressBar({ progress }) {
+    const { done = 0, total = 0, percent = 0 } = progress ?? {};
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <Loader2 size={15} className="animate-spin text-neu-accent" />
+                    <span className="text-sm font-medium text-neu-text">
+                        Synthesizing…&nbsp;
+                        <span className="font-mono text-neu-accent">{done}</span>
+                        <span className="text-neu-dim">/{total}</span> chunks
+                    </span>
+                </div>
+                <span className="font-mono text-sm font-bold text-neu-accent">{percent}%</span>
+            </div>
+
+            <div className="neu-progress-track">
+                <div className="neu-progress-fill" style={{ width: `${Math.max(percent, 1)}%` }} />
+            </div>
+
+            <p className="text-[10px] text-neu-dim font-mono tracking-wide">
+                Large documents may take 20–60 min. Pairs stream in as each fragment finishes.
+            </p>
+        </div>
+    );
+}
+
 // ─── QA Pairs Preview ─────────────────────────────────────────────────────────
-function QAPairsSection({ projectName, hasQA }) {
+function QAPairsSection({ projectName, hasQA, progress, stopped, finished }) {
     const [showRaw, setShowRaw] = useState(false);
+
+    const isGenerating = progress
+        && progress.status !== 'done'
+        && progress.status !== 'error'
+        && progress.status !== 'stopped';
 
     const { data, isLoading, isFetching } = useQuery({
         queryKey: ['qa', projectName],
         queryFn: () => projectApi.getQAPairs(projectName),
         enabled: !!hasQA,
-        staleTime: 30_000,
+        refetchInterval: isGenerating ? 5000 : false,
+        staleTime: isGenerating ? 0 : 30_000,
     });
 
-    const isWaiting = !hasQA;
+    const isWaiting = !hasQA && !isGenerating;
     const loading = isLoading && hasQA;
 
-    if (isWaiting) {
-        return (
-            <Section title="QA Pairs Preview" icon={MessageSquare}>
-                <EmptyState waiting message="Waiting for QA generation to complete..." />
-            </Section>
-        );
-    }
+    if (isWaiting) return (
+        <Section title="QA Pairs Preview" icon={MessageSquare}>
+            <EmptyState waiting message="Waiting for synthesis to complete…" />
+        </Section>
+    );
 
-    if (loading) {
-        return (
-            <Section title="QA Pairs Preview" icon={MessageSquare} loading>
-                <EmptyState waiting message="Loading QA pairs..." />
-            </Section>
-        );
-    }
+    if (stopped && (!data || data.qa_pairs?.length === 0)) return (
+        <Section title="QA Pairs Preview" icon={MessageSquare}>
+            <div className="neu-alert-warn">
+                <AlertCircle size={18} className="flex-shrink-0" />
+                <p>Generation was stopped by the user. Partial results will appear if available.</p>
+            </div>
+        </Section>
+    );
+
+    if (isGenerating && (!data || data.qa_pairs?.length === 0)) return (
+        <Section title="QA Pairs Preview" icon={MessageSquare}>
+            <GenerationProgressBar progress={progress} />
+        </Section>
+    );
+
+    if (loading) return (
+        <Section title="QA Pairs Preview" icon={MessageSquare} loading>
+            <EmptyState waiting message="Loading QA pairs…" />
+        </Section>
+    );
 
     const pairs = data?.qa_pairs ?? [];
-    if (pairs.length === 0) {
-        return (
-            <Section title="QA Pairs Preview" icon={MessageSquare}>
-                <EmptyState message="No QA pairs generated yet." />
-            </Section>
-        );
-    }
+    if (pairs.length === 0) return (
+        <Section title="QA Pairs Preview" icon={MessageSquare}>
+            {isGenerating
+                ? <GenerationProgressBar progress={progress} />
+                : <EmptyState message="No QA pairs generated yet." />
+            }
+        </Section>
+    );
 
     const first10 = pairs.slice(0, 10);
 
@@ -423,70 +412,94 @@ function QAPairsSection({ projectName, hasQA }) {
         <Section
             title="QA Pairs Preview"
             icon={MessageSquare}
-            badge={`${pairs.length} pairs`}
+            badge={finished
+                ? `${pairs.length} pairs ✓ Complete`
+                : isGenerating
+                    ? `${pairs.length} pairs (live…)`
+                    : `${pairs.length} pairs`}
             copyData={first10}
             loading={isFetching && !isLoading}
         >
-            <div className="flex items-center justify-between mb-4">
-                <p className="text-sm text-gray-500">Showing first {first10.length} of {pairs.length} pairs</p>
-                <button
-                    onClick={() => setShowRaw(!showRaw)}
-                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition"
-                >
-                    <Code2 size={12} />
+            {isGenerating && <div className="mb-6"><GenerationProgressBar progress={progress} /></div>}
+
+            <div className="flex items-center justify-between mb-5">
+                <p className="text-[10px] text-neu-dim font-bold uppercase tracking-widest">
+                    Showing {first10.length} of {pairs.length} pairs
+                </p>
+                <button onClick={() => setShowRaw(!showRaw)} className="neu-btn-sm">
+                    <Code2 size={11} />
                     {showRaw ? 'Card View' : 'Raw JSON'}
                 </button>
             </div>
 
-            {showRaw ? (
-                <pre className="bg-gray-900 text-green-400 text-xs p-4 rounded-lg overflow-auto max-h-96 font-mono whitespace-pre-wrap">
-                    {JSON.stringify(first10, null, 2)}
-                </pre>
-            ) : (
-                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
-                    {first10.map((pair, i) => {
-                        const q = pair.instruction ?? pair.question ?? pair.input ?? `Pair ${i + 1}`;
-                        const a = pair.output ?? pair.answer ?? pair.response ?? '';
-                        return (
-                            <div key={i}>
-                                <div className="bg-gray-50 rounded-xl p-4 border">
-                                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-1">Q{i + 1}</p>
-                                    <p className="font-semibold text-gray-800 text-sm mb-3">{q}</p>
-                                    <p className="text-xs font-bold text-green-600 uppercase tracking-wide mb-1">Answer</p>
-                                    <p className="text-sm text-gray-600 leading-relaxed">{a}</p>
+            {showRaw
+                ? <pre className="neu-terminal max-h-96">{JSON.stringify(first10, null, 2)}</pre>
+                : (
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
+                        {first10.map((pair, i) => {
+                            const q = pair.instruction ?? pair.question ?? pair.input ?? `Pair ${i + 1}`;
+                            const a = pair.output ?? pair.answer ?? pair.response ?? '';
+                            return (
+                                <div key={i} className="neu-chunk">
+                                    <div className="px-5 py-4">
+                                        {/* Question */}
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="neu-badge neu-badge-accent text-[9px]">Q {i + 1}</span>
+                                        </div>
+                                        <p className="font-semibold text-neu-text text-sm mb-4 leading-snug">{q}</p>
+
+                                        <div className="neu-divider mb-4" />
+
+                                        {/* Answer */}
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="neu-badge neu-badge-green text-[9px]">Answer</span>
+                                        </div>
+                                        <p className="text-xs text-neu-dim leading-relaxed font-mono">{a}</p>
+                                    </div>
                                 </div>
-                                {i < first10.length - 1 && <div className="border-b my-1" />}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+                            );
+                        })}
+                    </div>
+                )
+            }
         </Section>
     );
 }
 
 // ─── Main Debug Dashboard ─────────────────────────────────────────────────────
 export default function DebugDashboard({ projectName, status }) {
+    const queryClient = useQueryClient();
+
+    // Auto-refresh QA list when pipeline finishes
+    useEffect(() => {
+        if (status?.finished) {
+            queryClient.invalidateQueries(['qa', projectName]);
+        }
+    }, [status?.finished, projectName, queryClient]);
+
     return (
         <div>
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-8">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-800">Debug Dashboard</h2>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                        Live pipeline inspection — updates automatically as each stage completes
+                    <h2 className="text-2xl font-light text-neu-text tracking-tight">
+                        Pipeline <span className="text-neu-dim font-thin">/ Inspector</span>
+                    </h2>
+                    <p className="text-[10px] text-neu-dim font-mono uppercase tracking-widest mt-1">
+                        Live pipeline inspection — streams as each stage completes
                     </p>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 border px-3 py-1.5 rounded-lg">
-                    <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                    Auto-refreshing every 2s
+                <div className="flex items-center gap-3 neu-inset px-4 py-2 rounded-xl">
+                    <div className="led led-green animate-pulse" />
+                    <span className="text-[10px] text-neu-dim font-mono font-bold tracking-wider">AUTO-REFRESH · 2s</span>
                 </div>
             </div>
 
             <MetadataSection status={status} projectName={projectName} />
             <CleaningSection projectName={projectName} hasCleaned={status?.has_cleaned} />
             <ChunkingSection projectName={projectName} hasChunks={status?.has_chunks} />
-            <QAPairsSection projectName={projectName} hasQA={status?.has_qa} />
+            <QAPairsSection projectName={projectName} hasQA={status?.has_qa}
+                progress={status?.progress} stopped={status?.stopped} finished={status?.finished} />
         </div>
     );
 }

@@ -34,10 +34,10 @@ class LocalLLM(LLMProvider):
              payload["options"]["presence_penalty"] = config["presence_penalty"]
              
         try:
-            # Check connectivity first? No, request handles it.
-            response = requests.post(url, json=payload, timeout=60)
+            response = requests.post(url, json=payload, timeout=300)  # 5 min timeout per chunk
             response.raise_for_status()
             data = response.json()
             return data.get("response", "")
         except Exception as e:
             raise RuntimeError(f"Error calling Local LLM: {str(e)}")
+

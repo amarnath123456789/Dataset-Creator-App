@@ -2,9 +2,13 @@ import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectApi } from '../api/api';
-import { ArrowLeft, Play, Upload, Settings, FileText, Download, CheckCircle, AlertCircle, Loader2, BarChart2 } from 'lucide-react';
+import {
+    ArrowLeft, Play, Upload, Settings, FileText, Download,
+    CheckCircle, AlertCircle, Loader2, BarChart2, Square, Zap
+} from 'lucide-react';
 import SettingsPanel from '../components/SettingsPanel';
 import DebugDashboard from '../components/DebugDashboard';
+import PromptEditor from '../components/PromptEditor';
 
 export default function Workspace() {
     const { name } = useParams();
@@ -12,150 +16,247 @@ export default function Workspace() {
     const [pipelineConfig, setPipelineConfig] = useState({
         chunk_size: 800,
         chunk_overlap: 100,
-        similarity_threshold: 0.92
+        similarity_threshold: 0.92,
     });
     const [generationConfig, setGenerationConfig] = useState({
         provider: 'local',
         model_name: 'llama3.2',
         temperature: 0.7,
-        top_p: 0.9,
+        top_p: 1.0,
+        frequency_penalty: 0.0,
+        presence_penalty: 0.0,
+        max_tokens: 0,
+        qa_density_factor: 1.0,
         domain: 'general',
         format: 'alpaca',
         api_key: '',
     });
     const [uploadFile, setUploadFile] = useState(null);
-
     const queryClient = useQueryClient();
 
-    // Poll status every 2 seconds
     const { data: status } = useQuery({
         queryKey: ['status', name],
         queryFn: () => projectApi.getStatus(name),
-        refetchInterval: 2000
+        refetchInterval: 2000,
     });
 
     const uploadMutation = useMutation({
         mutationFn: (file) => projectApi.upload(name, file),
         onSuccess: () => {
             queryClient.invalidateQueries(['status', name]);
-            setActiveTab('clean'); // Move to next step logically? Or stay.
-            alert("Upload successful");
+            setActiveTab('settings');
         },
-        onError: (e) => alert(`Upload failed: ${e.message}`)
+        onError: (e) => alert(`Upload failed: ${e.message}`),
     });
-
-    const saveDebugData = (patch) => {
-        try {
-            const key = `debug_${name}`;
-            const existing = JSON.parse(localStorage.getItem(key) || '{}');
-            localStorage.setItem(key, JSON.stringify({ ...existing, ...patch }));
-        } catch { }
-    };
 
     const runPipelineMutation = useMutation({
         mutationFn: () => projectApi.runPipeline(name, {
             pipeline_config: pipelineConfig,
-            generation_config: generationConfig
+            generation_config: generationConfig,
         }),
-        onSuccess: (data) => {
-            saveDebugData({
-                timestamp: new Date().toISOString(),
-                pipelineConfig,
-                generationConfig,
-                // Store pipeline result data if backend returns it
-                cleanedText: data?.cleaned_text ?? data?.cleanedText ?? null,
-                rawLength: data?.raw_length ?? data?.rawLength ?? null,
-                cleanedLength: data?.cleaned_length ?? data?.cleanedLength ?? null,
-                chunks: data?.chunks ?? null,
-                qaPairs: data?.qa_pairs ?? data?.qaPairs ?? null,
-            });
-            alert("Pipeline started!");
-        }
+        onSuccess: () => {
+            queryClient.invalidateQueries(['qa', name]);
+            queryClient.invalidateQueries(['status', name]);
+        },
+        onError: (e) => alert(`Failed to start pipeline: ${e.message}`),
     });
 
-    const handleUpload = () => {
-        if (uploadFile) uploadMutation.mutate(uploadFile);
-    };
+    const stopMutation = useMutation({
+        mutationFn: () => projectApi.stopPipeline(name),
+        onSuccess: () => { queryClient.invalidateQueries(['status', name]); },
+        onError: (e) => alert(`Failed to stop pipeline: ${e.message}`),
+    });
 
     const tabs = [
-        { id: 'upload', label: '1. Upload', icon: Upload },
-        { id: 'settings', label: '2. Settings', icon: Settings },
-        { id: 'run', label: '3. Run Pipeline', icon: Play },
-        { id: 'dashboard', label: '4. Dashboard', icon: BarChart2 },
-        { id: 'export', label: '5. Export', icon: Download },
+        { id: 'upload', label: 'Upload', icon: Upload },
+        { id: 'settings', label: 'Settings', icon: Settings },
+        { id: 'prompt', label: 'Prompt', icon: FileText },
+        { id: 'run', label: 'Run Pipeline', icon: Play },
+        { id: 'dashboard', label: 'Dashboard', icon: BarChart2 },
+        { id: 'export', label: 'Export', icon: Download },
     ];
 
     return (
         <div className="max-w-6xl mx-auto">
+
+            {/* ── Workspace Header ──────────────────────────────────────── */}
             <div className="mb-6 flex items-center justify-between">
-                <Link to="/" className="flex items-center text-gray-500 hover:text-blue-600">
-                    <ArrowLeft size={20} className="mr-2" /> Back to Projects
+                <Link
+                    to="/"
+                    className="neu-btn flex items-center gap-2 px-4 py-2 text-sm text-neu-dim hover:text-neu-text rounded-xl no-underline"
+                >
+                    <ArrowLeft size={16} />
+                    Back
                 </Link>
-                <span className="text-sm font-mono bg-gray-100 px-3 py-1 rounded">{name}</span>
+
+                <div className="neu-inset px-4 py-2 rounded-xl">
+                    <span className="font-mono text-xs text-neu-accent tracking-widest font-bold uppercase">{name}</span>
+                </div>
             </div>
 
-            {/* Progress / Status Bar */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border mb-6 flex justify-between items-center">
-                <div className="flex gap-4">
-                    <StatusItem label="Raw Text" active={status?.has_raw} />
+            {/* ── Status Bar ───────────────────────────────────────────── */}
+            <div className="neu-trough px-5 py-3.5 flex items-center justify-between mb-6 rounded-2xl">
+                <div className="flex gap-5">
+                    <StatusItem label="Raw" active={status?.has_raw} />
                     <StatusItem label="Cleaned" active={status?.has_cleaned} />
                     <StatusItem label="Chunks" active={status?.has_chunks} count={status?.chunk_count} />
-                    <StatusItem label="QA Pairs" active={status?.has_qa} count={status?.qa_count} />
+                    <StatusItem label="QA" active={status?.has_qa || status?.stopped} count={status?.qa_count} />
+                </div>
+
+                <div className="flex items-center gap-3">
+                    {status?.running && (
+                        <>
+                            <div className="flex items-center gap-2 neu-inset px-4 py-1.5 rounded-xl">
+                                <Loader2 size={12} className="animate-spin text-neu-accent" />
+                                <span className="text-xs font-bold text-neu-accent tracking-widest uppercase">Running</span>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    if (confirm('Stop after current chunk? Partial results will be saved.')) {
+                                        stopMutation.mutate();
+                                    }
+                                }}
+                                disabled={stopMutation.isPending}
+                                className="flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-bold text-red-400 neu-inset hover:shadow-[inset_5px_5px_10px_#141619,inset_-5px_-5px_10px_#2e343b,0_0_10px_rgba(239,68,68,0.3)] transition-all disabled:opacity-40"
+                            >
+                                {stopMutation.isPending
+                                    ? <Loader2 size={11} className="animate-spin" />
+                                    : <Square size={10} fill="currentColor" />
+                                }
+                                {stopMutation.isPending ? 'Stopping…' : 'Stop'}
+                            </button>
+                        </>
+                    )}
+                    {!status?.running && status?.stopped && (
+                        <div className="flex items-center gap-2 neu-inset px-4 py-1.5 rounded-xl">
+                            <div className="led led-on" />
+                            <span className="text-xs font-bold text-neu-accent tracking-widest uppercase">Stopped</span>
+                        </div>
+                    )}
+                    {!status?.running && status?.has_error && (
+                        <div className="flex items-center gap-2 neu-inset px-4 py-1.5 rounded-xl">
+                            <div className="led led-red" />
+                            <span className="text-xs font-bold text-red-400 tracking-widest uppercase">Error</span>
+                        </div>
+                    )}
+                    {status?.finished && !status?.running && (
+                        <div className="flex items-center gap-2 neu-inset px-4 py-1.5 rounded-xl">
+                            <div className="led led-green" />
+                            <span className="text-xs font-bold text-green-400 tracking-widest uppercase">Complete</span>
+                        </div>
+                    )}
                 </div>
             </div>
 
             <div className="flex gap-6">
-                {/* Sidebar Tabs */}
-                <div className="w-64 flex flex-col gap-2">
-                    {tabs.map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`flex items-center gap-3 px-4 py-3 rounded-lg text-left transition ${activeTab === tab.id
-                                ? 'bg-blue-600 text-white shadow-md'
-                                : 'bg-white hover:bg-gray-50 text-gray-700'
-                                }`}
-                        >
-                            <tab.icon size={18} />
-                            {tab.label}
-                        </button>
-                    ))}
+                {/* ── Sidebar ────────────────────────────────────────── */}
+                <div className="w-52 flex-shrink-0 flex flex-col gap-3">
+                    {tabs.map((tab, idx) => {
+                        const isActive = activeTab === tab.id;
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`relative group flex items-center gap-4 px-5 py-4 rounded-2xl text-left outline-none transition-all duration-300 ${isActive
+                                    ? 'neu-inset text-neu-accent'
+                                    : 'neu-plate text-neu-dim hover:text-neu-text'
+                                    }`}
+                            >
+                                {/* Active top stripe */}
+                                {isActive && (
+                                    <div className="absolute top-0 left-4 right-4 h-[2px] bg-neu-accent rounded-full shadow-[0_0_8px_rgba(255,107,0,0.6)]" />
+                                )}
+
+                                {/* Icon */}
+                                <div className={`flex-shrink-0 p-2.5 rounded-xl transition-all duration-300 ${isActive
+                                    ? 'bg-neu-accent/10 shadow-[0_0_12px_rgba(255,107,0,0.25)]'
+                                    : 'bg-neu-base shadow-[3px_3px_6px_#141619,-3px_-3px_6px_#2e343b]'
+                                    }`}>
+                                    <tab.icon
+                                        size={16}
+                                        strokeWidth={isActive ? 2.5 : 1.5}
+                                        className={isActive ? 'text-neu-accent' : 'text-neu-dim'}
+                                    />
+                                </div>
+
+                                {/* Label */}
+                                <div className="flex-1 min-w-0">
+                                    <span className={`text-sm font-semibold block truncate ${isActive ? 'text-neu-accent' : 'text-neu-dim'}`}>
+                                        {tab.label}
+                                    </span>
+                                </div>
+
+                                {/* LED */}
+                                <div className={`led flex-shrink-0 transition-all duration-300 ${isActive ? 'led-on' : 'led-off'}`} />
+                            </button>
+                        );
+                    })}
                 </div>
 
-                {/* Content Area */}
-                <div className="flex-1 bg-white rounded-xl shadow-sm border p-8 min-h-[500px]">
+                {/* ── Content Panel ─────────────────────────────────── */}
+                <div className="flex-1 min-w-0 neu-plate p-8 min-h-[540px]">
+
+                    {/* ▸ UPLOAD */}
                     {activeTab === 'upload' && (
-                        <div className="text-center py-12">
-                            <div className="mb-6">
-                                <Upload size={48} className="mx-auto text-gray-300 mb-4" />
-                                <h2 className="text-2xl font-bold text-gray-800">Upload Source Text</h2>
-                                <p className="text-gray-500">Supported formats: .txt</p>
-                            </div>
-                            <label className="block max-w-sm mx-auto cursor-pointer">
-                                <span className="sr-only">Choose file</span>
-                                <input
-                                    type="file"
-                                    accept=".txt"
-                                    onChange={(e) => setUploadFile(e.target.files[0])}
-                                    className="block w-full text-sm text-gray-500
-                            file:mr-4 file:py-2 file:px-4
-                            file:rounded-full file:border-0
-                            file:text-sm file:font-semibold
-                            file:bg-blue-50 file:text-blue-700
-                            hover:file:bg-blue-100 mb-4"
-                                />
+                        <div className="flex flex-col items-center justify-center min-h-[420px] gap-8">
+                            {/* Drop zone */}
+                            <label className="w-full max-w-md cursor-pointer">
+                                <div className={`neu-trough rounded-2xl p-12 flex flex-col items-center gap-4 border-2 border-dashed transition-all duration-300 ${uploadFile
+                                    ? 'border-neu-accent/40 shadow-[inset_4px_4px_8px_#111315,inset_-4px_-4px_8px_#2c323a,0_0_20px_rgba(255,107,0,0.1)]'
+                                    : 'border-white/5 hover:border-neu-dim/20'
+                                    }`}>
+                                    <div className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-all duration-300 ${uploadFile ? 'bg-neu-accent/10 shadow-[0_0_20px_rgba(255,107,0,0.3)]' : 'neu-plate'
+                                        }`}>
+                                        <Upload size={32} className={uploadFile ? 'text-neu-accent' : 'text-neu-dim'} strokeWidth={1.5} />
+                                    </div>
+
+                                    {uploadFile ? (
+                                        <>
+                                            <p className="font-bold text-neu-text tracking-tight">{uploadFile.name}</p>
+                                            <p className="text-[10px] font-mono text-neu-dim uppercase tracking-widest">
+                                                {(uploadFile.size / 1024).toFixed(1)} KB · Ready
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <p className="font-semibold text-neu-text">Select source text</p>
+                                            <p className="text-[10px] font-mono text-neu-dim uppercase tracking-widest">TXT files only</p>
+                                        </>
+                                    )}
+
+                                    <input
+                                        type="file" accept=".txt"
+                                        onChange={(e) => setUploadFile(e.target.files[0])}
+                                        className="sr-only"
+                                    />
+                                </div>
                             </label>
+
+                            {/* Upload CTA */}
                             <button
-                                onClick={handleUpload}
+                                onClick={() => uploadFile && uploadMutation.mutate(uploadFile)}
                                 disabled={!uploadFile || uploadMutation.isPending}
-                                className="bg-blue-600 text-white px-8 py-2 rounded-lg disabled:opacity-50"
+                                className={`flex items-center gap-3 px-10 py-4 rounded-2xl font-bold tracking-widest text-sm uppercase transition-all duration-300 ${uploadFile && !uploadMutation.isPending
+                                    ? 'neu-btn neu-btn-primary shadow-[var(--sh-flat),var(--glow-sm)] hover:shadow-[var(--sh-hover),var(--glow)]'
+                                    : 'neu-inset text-neu-dim/30 cursor-not-allowed'
+                                    }`}
                             >
-                                {uploadMutation.isPending ? 'Uploading...' : 'Upload File'}
+                                {uploadMutation.isPending
+                                    ? <><Loader2 size={16} className="animate-spin" /> Uploading…</>
+                                    : <><Zap size={16} /> Ingest File</>
+                                }
                             </button>
-                            {status?.has_raw && <p className="mt-4 text-green-600 flex items-center justify-center gap-2"><CheckCircle size={16} /> File uploaded</p>}
+
+                            {status?.has_raw && (
+                                <div className="flex items-center gap-3 neu-inset px-5 py-3 rounded-xl">
+                                    <div className="led led-green" />
+                                    <span className="text-xs font-bold text-green-400 tracking-widest uppercase">File Uploaded</span>
+                                </div>
+                            )}
                         </div>
                     )}
 
+                    {/* ▸ SETTINGS */}
                     {activeTab === 'settings' && (
                         <SettingsPanel
                             pipelineConfig={pipelineConfig}
@@ -165,65 +266,156 @@ export default function Workspace() {
                         />
                     )}
 
-                    {activeTab === 'run' && (
-                        <div className="text-center py-12">
-                            <h2 className="text-2xl font-bold mb-4">Run Pipeline</h2>
-                            <p className="text-gray-600 mb-8 max-w-lg mx-auto">
-                                This will process the document through: Cleaning &rarr; Chunking &rarr; Embedding Refinement &rarr; QA Generation.
-                                This may take a while depending on the text size.
-                            </p>
+                    {/* ▸ PROMPT */}
+                    {activeTab === 'prompt' && <PromptEditor />}
 
-                            <div className="bg-yellow-50 text-yellow-800 p-4 rounded-lg inline-block mb-8 text-left">
-                                <ul className="list-disc pl-5 space-y-1">
-                                    <li>Chunk Size: {pipelineConfig.chunk_size}</li>
-                                    <li>Provider: {generationConfig.provider === 'openai' ? 'OpenAI API' : 'Ollama (Local)'}</li>
-                                    <li>Model: {generationConfig.model_name}</li>
-                                    <li>Format: {generationConfig.format}</li>
-                                </ul>
+                    {/* ▸ RUN */}
+                    {activeTab === 'run' && (
+                        <div className="flex flex-col items-center justify-center min-h-[420px] gap-8">
+                            <div className="text-center">
+                                <h2 className="text-2xl font-light text-neu-text tracking-tight">
+                                    Run Pipeline
+                                </h2>
+                                <p className="text-[10px] font-mono text-neu-dim uppercase tracking-widest mt-1">
+                                    Clean → Chunk → Embed → Generate
+                                </p>
                             </div>
 
-                            <div className="block">
+                            {/* Running banner */}
+                            {status?.running && (
+                                <div className="neu-alert-info w-full max-w-md animate-in fade-in">
+                                    <Loader2 size={16} className="animate-spin flex-shrink-0 text-blue-400" />
+                                    <div>
+                                        <p className="font-bold text-xs uppercase tracking-wide">Pipeline Active</p>
+                                        <p className="text-[10px] font-mono opacity-70">Monitor live progress in the Inspector tab.</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Stopped banner */}
+                            {status?.stopped && !status?.running && (
+                                <div className="neu-alert-warn w-full max-w-md animate-in fade-in">
+                                    <AlertCircle size={16} className="flex-shrink-0" />
+                                    <div>
+                                        <p className="font-bold text-xs uppercase tracking-wide">Generation Stopped</p>
+                                        <p className="text-[10px] font-mono opacity-70">Partial results are viewable in Inspector.</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Config manifest */}
+                            <div className="neu-trough w-full max-w-md p-5 rounded-2xl">
+                                <p className="text-[10px] font-bold text-neu-dim uppercase tracking-widest mb-4">Runtime Manifest</p>
+                                <div className="space-y-3">
+                                    {[
+                                        ['Chunk Size', pipelineConfig.chunk_size],
+                                        ['Provider', generationConfig.provider === 'openai' ? 'OpenAI API' : 'Ollama (Local)'],
+                                        ['Model', generationConfig.model_name],
+                                        ['Format', generationConfig.format],
+                                    ].map(([key, val]) => (
+                                        <div key={key} className="flex items-center justify-between gap-4">
+                                            <span className="text-xs text-neu-dim font-mono">{key}</span>
+                                            <span className="neu-badge neu-badge-accent font-mono">{val}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Engage + Stop */}
+                            <div className="flex flex-col items-center gap-4">
                                 <button
                                     onClick={() => runPipelineMutation.mutate()}
-                                    disabled={runPipelineMutation.isPending || !status?.has_raw}
-                                    className="bg-green-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-green-700 disabled:opacity-50 shadow-lg hover:shadow-xl transition transform hover:-translate-y-1 flex items-center gap-3 mx-auto"
+                                    disabled={runPipelineMutation.isPending || status?.running || !status?.has_raw}
+                                    className={`flex items-center gap-4 px-12 py-5 rounded-2xl text-base font-bold tracking-widest uppercase transition-all duration-300 ${status?.running || runPipelineMutation.isPending || !status?.has_raw
+                                        ? 'neu-inset text-neu-dim/30 cursor-not-allowed'
+                                        : 'neu-btn neu-btn-primary shadow-[var(--sh-flat),var(--glow-sm)] hover:shadow-[var(--sh-hover),var(--glow)] active:shadow-[var(--sh-press)]'
+                                        }`}
                                 >
-                                    {runPipelineMutation.isPending ? <Loader2 className="animate-spin" /> : <Play fill="currentColor" />}
-                                    Start Processing
+                                    {status?.running || runPipelineMutation.isPending
+                                        ? <Loader2 size={20} className="animate-spin" />
+                                        : <Play size={20} fill="currentColor" />
+                                    }
+                                    {status?.running ? 'Processing…' : 'Engage'}
                                 </button>
+
+                                {!status?.has_raw && (
+                                    <p className="text-[10px] font-mono text-neu-dim uppercase tracking-wide">
+                                        Upload a source file first
+                                    </p>
+                                )}
+
+                                {status?.running && (
+                                    <button
+                                        onClick={() => {
+                                            if (confirm('Stop after current chunk? Partial results will be saved.')) {
+                                                stopMutation.mutate();
+                                            }
+                                        }}
+                                        disabled={stopMutation.isPending}
+                                        className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-red-400 neu-inset tracking-widest uppercase hover:shadow-[inset_5px_5px_10px_#141619,inset_-5px_-5px_10px_#2e343b,0_0_12px_rgba(239,68,68,0.25)] transition-all disabled:opacity-40"
+                                    >
+                                        {stopMutation.isPending
+                                            ? <Loader2 size={12} className="animate-spin" />
+                                            : <Square size={11} fill="currentColor" />
+                                        }
+                                        Stop
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}
 
-                    {activeTab === 'export' && (
-                        <div className="text-center py-12">
-                            <h2 className="text-2xl font-bold mb-6">Export Dataset</h2>
-                            <p className="text-gray-600 mb-8">Download your generated QA pairs in JSONL format.</p>
-
-                            <div className="flex justify-center gap-4">
-                                <button
-                                    onClick={async () => {
-                                        const response = await projectApi.export(name, 'alpaca');
-                                        const url = window.URL.createObjectURL(response.data);
-                                        const link = document.createElement('a');
-                                        link.href = url;
-                                        link.setAttribute('download', `export_alpaca.jsonl`);
-                                        document.body.appendChild(link);
-                                        link.click();
-                                    }}
-                                    disabled={!status?.has_qa}
-                                    className="bg-gray-800 text-white px-6 py-3 rounded-lg hover:bg-gray-900 disabled:opacity-50 flex items-center gap-2"
-                                >
-                                    <Download size={18} />
-                                    Download JSONL
-                                </button>
-                            </div>
-                            {!status?.has_qa && <p className="mt-4 text-red-500">No QA pairs generated yet.</p>}
-                        </div>
-                    )}
-
+                    {/* ▸ DASHBOARD */}
                     {activeTab === 'dashboard' && (
                         <DebugDashboard projectName={name} status={status} />
+                    )}
+
+                    {/* ▸ EXPORT */}
+                    {activeTab === 'export' && (
+                        <div className="flex flex-col items-center justify-center min-h-[420px] gap-8">
+                            <div className="text-center">
+                                <h2 className="text-2xl font-light text-neu-text tracking-tight">
+                                    Export Dataset
+                                </h2>
+                                <p className="text-[10px] font-mono text-neu-dim uppercase tracking-widest mt-1">
+                                    Download your generated QA pairs
+                                </p>
+                            </div>
+
+                            <div className="w-20 h-20 rounded-2xl flex items-center justify-center neu-plate">
+                                <Download
+                                    size={32}
+                                    strokeWidth={1.5}
+                                    className={status?.has_qa ? 'text-neu-accent' : 'text-neu-dim/30'}
+                                />
+                            </div>
+
+                            <button
+                                onClick={async () => {
+                                    const response = await projectApi.export(name, 'alpaca');
+                                    const url = window.URL.createObjectURL(response.data);
+                                    const link = document.createElement('a');
+                                    link.href = url;
+                                    link.setAttribute('download', `${name}_alpaca.jsonl`);
+                                    document.body.appendChild(link);
+                                    link.click();
+                                }}
+                                disabled={!status?.has_qa}
+                                className={`flex items-center gap-3 px-10 py-4 rounded-2xl font-bold tracking-widest text-sm uppercase transition-all duration-300 ${status?.has_qa
+                                    ? 'neu-btn neu-btn-primary shadow-[var(--sh-flat),var(--glow-sm)] hover:shadow-[var(--sh-hover),var(--glow)]'
+                                    : 'neu-inset text-neu-dim/30 cursor-not-allowed'
+                                    }`}
+                            >
+                                <Download size={16} />
+                                Download JSONL
+                            </button>
+
+                            {!status?.has_qa && (
+                                <p className="text-[10px] font-mono text-neu-dim uppercase tracking-widest">
+                                    Run pipeline to generate QA pairs first
+                                </p>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
@@ -231,12 +423,17 @@ export default function Workspace() {
     );
 }
 
+// ─── Status Indicator ─────────────────────────────────────────────────────────
 function StatusItem({ label, active, count }) {
     return (
-        <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-            {active ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-            {label}
-            {count !== undefined && <span className="ml-1 bg-white px-2 py-0.5 rounded-full text-xs shadow-sm border">{count}</span>}
+        <div className="flex items-center gap-2">
+            <div className={`led ${active ? 'led-green animate-pulse' : 'led-off'}`} />
+            <span className={`text-[10px] font-bold tracking-widest uppercase ${active ? 'text-green-400' : 'text-neu-dim/40'}`}>
+                {label}
+            </span>
+            {count !== undefined && active && (
+                <span className="neu-badge neu-badge-green text-[9px]">{count}</span>
+            )}
         </div>
-    )
+    );
 }

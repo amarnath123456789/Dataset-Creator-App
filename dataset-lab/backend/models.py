@@ -20,6 +20,7 @@ class GenerationConfig(BaseModel):
     domain: str = "general"
     format: str = "alpaca"
     api_key: Optional[str] = None  # User-supplied key (takes priority over OPENAI_API_KEY env var)
+    qa_density_factor: float = Field(default=1.0, ge=0.5, le=3.0)
     
 class Chunk(BaseModel):
     chunk_id: int
@@ -38,3 +39,12 @@ class ProjectStatus(BaseModel):
     has_qa: bool
     chunk_count: int
     qa_count: int
+    running: bool = False
+    stopped: bool = False
+    has_error: bool = False
+    progress: Optional[Dict[str, Any]] = None
+    finished: bool = False
+
+class PromptUpdateRequest(BaseModel):
+    prompt: str
+

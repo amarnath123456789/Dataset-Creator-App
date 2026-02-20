@@ -19,6 +19,7 @@ export const projectApi = {
         }).then(res => res.data);
     },
     runPipeline: (name, config) => api.post(`/projects/${name}/run`, config).then(res => res.data),
+    stopPipeline: (name) => api.post(`/projects/${name}/stop`).then(res => res.data),
     export: (name, format) => api.get(`/projects/${name}/export`, {
         params: { format },
         responseType: 'blob'
@@ -31,6 +32,9 @@ export const projectApi = {
 
 export const llmApi = {
     getOllamaModels: () => api.get('/llm/ollama/models').then(res => res.data),
+    getPrompt: () => api.get('/prompt/').then(res => res.data),
+    savePrompt: (prompt) => api.post('/prompt/', { prompt }).then(res => res.data),
 };
+
 
 export default api;
