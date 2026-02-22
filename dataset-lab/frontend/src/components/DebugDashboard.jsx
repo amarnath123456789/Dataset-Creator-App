@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectApi } from '../api/api';
 import {
     RefreshCw, Copy, ChevronDown, ChevronRight,
     Code2, ChevronsDownUp, ChevronsUpDown,
     CheckCircle, AlertCircle, Clock, Layers, MessageSquare,
-    FileText, BarChart2, Loader2, Check
+    FileText, BarChart2, Loader2, Check, Square
 } from 'lucide-react';
 
 function copyToClipboard(text) {
@@ -467,7 +467,7 @@ function QAPairsSection({ projectName, hasQA, progress, stopped, finished }) {
 }
 
 // ─── Main Debug Dashboard ─────────────────────────────────────────────────────
-export default function DebugDashboard({ projectName, status }) {
+export default function DebugDashboard({ projectName, status, stopMutation }) {
     const queryClient = useQueryClient();
 
     // Auto-refresh QA list when pipeline finishes
@@ -479,6 +479,127 @@ export default function DebugDashboard({ projectName, status }) {
 
     return (
         <div>
+            {/* ── PIPELINE CONTROLS — Always visible, adapts to state ───── */}
+            <div className="relative mb-8 overflow-hidden rounded-2xl" style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
+
+                {/* ---- STATE: RUNNING ---------------------------------------- */}
+                {status?.running && (
+                    <>
+                        <div className="absolute inset-0 bg-gradient-to-r from-red-950/60 via-red-900/40 to-red-950/60" />
+                        <div className="absolute inset-0" style={{ border: '1px solid rgba(239,68,68,0.3)' }} />
+                        <style>{`
+                            @keyframes stopPulse {
+                                0%,100% { box-shadow: 0 0 18px rgba(239,68,68,0.15), inset 0 0 18px rgba(239,68,68,0.05); }
+                                50%      { box-shadow: 0 0 42px rgba(239,68,68,0.40), inset 0 0 30px rgba(239,68,68,0.12); }
+                            }
+                        `}</style>
+                        <div className="absolute inset-0" style={{ animation: 'stopPulse 2s ease-in-out infinite' }} />
+
+                        <div className="relative z-10 flex items-center justify-between px-7 py-5 gap-4">
+                            <div className="flex items-center gap-4 min-w-0">
+                                <div className="w-12 h-12 flex-shrink-0 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                                    <Loader2 size={22} className="text-red-400 animate-spin" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-black text-red-300 uppercase tracking-widest">Pipeline Running</p>
+                                    <p className="text-[11px] text-red-400/60 font-mono mt-0.5">
+                                        {status?.progress
+                                            ? `Chunk ${status.progress.done} / ${status.progress.total} · ${status.progress.percent}%`
+                                            : 'Initialising…'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    if (window.confirm('Stop the pipeline?\n\nAll QA pairs generated so far will be saved. You can resume later.')) {
+                                        stopMutation?.mutate();
+                                    }
+                                }}
+                                disabled={stopMutation?.isPending}
+                                style={{
+                                    background: stopMutation?.isPending ? 'rgba(239,68,68,0.15)' : 'linear-gradient(135deg,rgba(239,68,68,0.85),rgba(185,28,28,0.95))',
+                                    color: stopMutation?.isPending ? 'rgba(239,68,68,0.4)' : '#fff',
+                                    boxShadow: stopMutation?.isPending ? 'none' : '0 0 22px rgba(239,68,68,0.45), 0 4px 16px rgba(0,0,0,0.45)',
+                                    border: '1px solid rgba(239,68,68,0.35)',
+                                    cursor: stopMutation?.isPending ? 'not-allowed' : 'pointer',
+                                }}
+                                className="flex-shrink-0 flex items-center gap-3 px-8 py-4 rounded-xl font-black text-sm uppercase tracking-widest transition-all duration-200"
+                            >
+                                {stopMutation?.isPending
+                                    ? <><Loader2 size={17} className="animate-spin" /> Stopping…</>
+                                    : <><Square size={15} fill="currentColor" /> Stop Generation</>}
+                            </button>
+                        </div>
+
+                        {status?.progress && (
+                            <div className="relative z-10 h-1 mx-7 mb-4 rounded-full overflow-hidden" style={{ background: 'rgba(127,29,29,0.6)' }}>
+                                <div
+                                    className="h-full rounded-full transition-all duration-700"
+                                    style={{
+                                        width: `${Math.max(status.progress.percent, 1)}%`,
+                                        background: 'linear-gradient(90deg, #ef4444, #f87171)',
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {/* ---- STATE: STOPPED (partial results saved) ---------------- */}
+                {!status?.running && status?.stopped && (
+                    <div className="px-7 py-5 flex items-center justify-between gap-4"
+                        style={{ background: 'linear-gradient(135deg, rgba(120,53,15,0.35), rgba(92,45,12,0.2))' }}>
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 flex-shrink-0 rounded-xl flex items-center justify-center"
+                                style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                                <AlertCircle size={22} className="text-yellow-400" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-black uppercase tracking-widest" style={{ color: '#fbbf24' }}>
+                                    Generation Stopped
+                                </p>
+                                <p className="text-[11px] font-mono mt-0.5" style={{ color: 'rgba(251,191,36,0.55)' }}>
+                                    {status?.qa_count > 0 ? `${status.qa_count} QA pairs saved · ` : ''}
+                                    Go to “Run Pipeline” to continue or start fresh
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex-shrink-0 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest"
+                            style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.15)', color: 'rgba(251,191,36,0.5)' }}>
+                            Stopped
+                        </div>
+                    </div>
+                )}
+
+                {/* ---- STATE: IDLE / COMPLETE -------------------------------- */}
+                {!status?.running && !status?.stopped && (
+                    <div className="px-7 py-5 flex items-center justify-between gap-4"
+                        style={{ background: 'rgba(255,255,255,0.02)' }}>
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 flex-shrink-0 rounded-xl flex items-center justify-center"
+                                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <Square size={20} className="text-neu-dim/30" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-neu-dim/50 uppercase tracking-widest">
+                                    {status?.finished ? 'Pipeline Complete' : 'No Pipeline Running'}
+                                </p>
+                                <p className="text-[11px] text-neu-dim/30 font-mono mt-0.5">
+                                    {status?.finished
+                                        ? `${status?.qa_count ?? 0} QA pairs generated · ready to export`
+                                        : 'Start a pipeline from the “Run Pipeline” tab'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex-shrink-0 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest"
+                            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.15)' }}>
+                            {status?.finished ? 'Complete' : 'Idle'}
+                        </div>
+                    </div>
+                )}
+            </div>
+
             {/* Header */}
             <div className="flex items-center justify-between mb-8">
                 <div>

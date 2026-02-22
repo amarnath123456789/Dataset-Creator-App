@@ -18,7 +18,7 @@ export const projectApi = {
             headers: { 'Content-Type': 'multipart/form-data' }
         }).then(res => res.data);
     },
-    runPipeline: (name, config) => api.post(`/projects/${name}/run`, config).then(res => res.data),
+    runPipeline: (name, config, resume = false) => api.post(`/projects/${name}/run`, { ...config, resume }).then(res => res.data),
     stopPipeline: (name) => api.post(`/projects/${name}/stop`).then(res => res.data),
     export: (name, format) => api.get(`/projects/${name}/export`, {
         params: { format },

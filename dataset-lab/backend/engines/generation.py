@@ -41,15 +41,19 @@ class GenerationEngine:
         except Exception:
             pass
 
-    def generate(self, project_path: Path, config: GenerationConfig):
+    def generate(self, project_path: Path, config: GenerationConfig,
+                 resume_from: int = 0, existing_qa: List[Dict[str, Any]] = None):
         error_log = project_path / "error.log"
         # Clear any previous generation errors so old messages don't persist
         if error_log.exists():
             error_log.unlink()
-        # Clear previous progress
-        progress_path = project_path / "progress.json"
-        if progress_path.exists():
-            progress_path.unlink()
+        # Clear previous progress only when starting fresh (not resuming)
+        # so the resume_from offset in progress.json stays readable until
+        # run_pipeline_task has already extracted it.
+        if resume_from == 0:
+            progress_path = project_path / "progress.json"
+            if progress_path.exists():
+                progress_path.unlink()
 
         # 1. Load Chunks
         chunks_path = project_path / "chunks.json"
@@ -76,19 +80,25 @@ class GenerationEngine:
         # 3. Initialize LLM
         llm = self._get_provider(config)
         
-        qa_results = []
+        # Seed with existing partial results when resuming
+        qa_results = list(existing_qa) if existing_qa else []
         chunk_errors = []
         total = len(chunks)
         
-        # Initialize qa_v1.json as empty list immediately so status endpoint sees it
+        # Skip already-processed chunks when resuming
+        chunks_to_process = chunks[resume_from:] if resume_from > 0 else chunks
+        if resume_from > 0:
+            logger.info(f"[Generation] Resuming from chunk {resume_from}/{total}, {len(qa_results)} existing QA pairs loaded.")
+        
+        # Initialize / update qa_v1.json with whatever we already have
         qa_path = project_path / "qa_v1.json"
         with open(qa_path, 'w', encoding='utf-8') as f:
-            json.dump([], f)
+            json.dump(qa_results, f, indent=2)
         
-        self._write_progress(project_path, 0, total, "starting")
+        self._write_progress(project_path, resume_from, total, "starting")
         
-        # 4. Loop through chunks
-        for i, chunk in enumerate(chunks):
+        # 4. Loop through chunks (offset index when resuming)
+        for i, chunk in enumerate(chunks_to_process, start=resume_from):
             # Check for stop signal
             if (project_path / ".stop").exists():
                 logger.info(f"[Generation] Stop signal detected for {project_path.name}")
@@ -183,6 +193,14 @@ class GenerationEngine:
         stop_path = project_path / ".stop"
         if stop_path.exists():
             stop_path.unlink()
+
+        # ── Clean up the partial file after a successful run ────────────────
+        # (either a fresh run that completed, or a resumed run that finished)
+        # Without this, has_partial stays true and the resume modal keeps
+        # appearing even after everything completed successfully.
+        partial_path = project_path / "qa_partial.json"
+        if partial_path.exists():
+            partial_path.unlink()
 
         self._write_progress(project_path, total, total, "done")
 

@@ -32,12 +32,13 @@ export default function Workspace() {
         api_key: '',
     });
     const [uploadFile, setUploadFile] = useState(null);
+    const [showResumeModal, setShowResumeModal] = useState(false);
     const queryClient = useQueryClient();
 
     const { data: status } = useQuery({
         queryKey: ['status', name],
         queryFn: () => projectApi.getStatus(name),
-        refetchInterval: 2000,
+        refetchInterval: 500,
     });
 
     const uploadMutation = useMutation({
@@ -53,7 +54,7 @@ export default function Workspace() {
         mutationFn: () => projectApi.runPipeline(name, {
             pipeline_config: pipelineConfig,
             generation_config: generationConfig,
-        }),
+        }, false),
         onSuccess: () => {
             queryClient.invalidateQueries(['qa', name]);
             queryClient.invalidateQueries(['status', name]);
@@ -61,11 +62,34 @@ export default function Workspace() {
         onError: (e) => alert(`Failed to start pipeline: ${e.message}`),
     });
 
+    const resumePipelineMutation = useMutation({
+        mutationFn: () => projectApi.runPipeline(name, {
+            pipeline_config: pipelineConfig,
+            generation_config: generationConfig,
+        }, true),
+        onSuccess: () => {
+            queryClient.invalidateQueries(['qa', name]);
+            queryClient.invalidateQueries(['status', name]);
+            setShowResumeModal(false);
+        },
+        onError: (e) => alert(`Failed to resume pipeline: ${e.message}`),
+    });
+
     const stopMutation = useMutation({
         mutationFn: () => projectApi.stopPipeline(name),
         onSuccess: () => { queryClient.invalidateQueries(['status', name]); },
         onError: (e) => alert(`Failed to stop pipeline: ${e.message}`),
     });
+
+    // Called when user clicks the Engage button
+    const handleEngageClick = () => {
+        // Show resume modal if there are saved partial results (stopped mid-run)
+        if (status?.has_partial || status?.stopped) {
+            setShowResumeModal(true);
+        } else {
+            runPipelineMutation.mutate();
+        }
+    };
 
     const tabs = [
         { id: 'upload', label: 'Upload', icon: Upload },
@@ -324,18 +348,18 @@ export default function Workspace() {
                             {/* Engage + Stop */}
                             <div className="flex flex-col items-center gap-4">
                                 <button
-                                    onClick={() => runPipelineMutation.mutate()}
-                                    disabled={runPipelineMutation.isPending || status?.running || !status?.has_raw}
-                                    className={`flex items-center gap-4 px-12 py-5 rounded-2xl text-base font-bold tracking-widest uppercase transition-all duration-300 ${status?.running || runPipelineMutation.isPending || !status?.has_raw
+                                    onClick={handleEngageClick}
+                                    disabled={runPipelineMutation.isPending || resumePipelineMutation.isPending || status?.running || !status?.has_raw}
+                                    className={`flex items-center gap-4 px-12 py-5 rounded-2xl text-base font-bold tracking-widest uppercase transition-all duration-300 ${status?.running || runPipelineMutation.isPending || resumePipelineMutation.isPending || !status?.has_raw
                                         ? 'neu-inset text-neu-dim/30 cursor-not-allowed'
                                         : 'neu-btn neu-btn-primary shadow-[var(--sh-flat),var(--glow-sm)] hover:shadow-[var(--sh-hover),var(--glow)] active:shadow-[var(--sh-press)]'
                                         }`}
                                 >
-                                    {status?.running || runPipelineMutation.isPending
+                                    {status?.running || runPipelineMutation.isPending || resumePipelineMutation.isPending
                                         ? <Loader2 size={20} className="animate-spin" />
                                         : <Play size={20} fill="currentColor" />
                                     }
-                                    {status?.running ? 'Processing…' : 'Engage'}
+                                    {status?.running ? 'Processing…' : status?.stopped ? 'Resume / Rerun' : 'Engage'}
                                 </button>
 
                                 {!status?.has_raw && (
@@ -367,7 +391,7 @@ export default function Workspace() {
 
                     {/* ▸ DASHBOARD */}
                     {activeTab === 'dashboard' && (
-                        <DebugDashboard projectName={name} status={status} />
+                        <DebugDashboard projectName={name} status={status} stopMutation={stopMutation} />
                     )}
 
                     {/* ▸ EXPORT */}
@@ -418,6 +442,108 @@ export default function Workspace() {
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* ── Resume / Restart Modal ─────────────────────────────── */}
+            <ResumeModal
+                show={showResumeModal}
+                onClose={() => setShowResumeModal(false)}
+                status={status}
+                onContinue={() => resumePipelineMutation.mutate()}
+                onRestart={() => {
+                    setShowResumeModal(false);
+                    runPipelineMutation.mutate();
+                }}
+                isLoadingContinue={resumePipelineMutation.isPending}
+                isLoadingRestart={runPipelineMutation.isPending}
+            />
+        </div>
+    );
+}
+
+// ─── Resume / Restart Modal ────────────────────────────────────────────────────
+function ResumeModal({ show, onClose, status, onContinue, onRestart, isLoadingContinue, isLoadingRestart }) {
+    if (!show) return null;
+    return (
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
+            onClick={onClose}
+        >
+            <div
+                className="relative w-full max-w-md mx-4 rounded-3xl p-8 flex flex-col gap-6"
+                style={{
+                    background: 'var(--neu-base, #1f2428)',
+                    boxShadow: '20px 20px 60px #111315, -10px -10px 40px #2c3036, 0 0 40px rgba(255,107,0,0.08)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                }}
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Icon */}
+                <div className="flex justify-center">
+                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                        style={{ background: 'rgba(255,107,0,0.08)', border: '1px solid rgba(255,107,0,0.2)' }}>
+                        <Play size={28} className="text-neu-accent" />
+                    </div>
+                </div>
+
+                {/* Copy */}
+                <div className="text-center">
+                    <h3 className="text-xl font-semibold text-neu-text tracking-tight mb-2">
+                        Previous run was stopped
+                    </h3>
+                    <p className="text-sm text-neu-dim leading-relaxed">
+                        {status?.qa_count > 0
+                            ? <><span className="text-neu-accent font-bold">{status.qa_count} QA pairs</span> were saved from the last run.</>
+                            : 'No QA pairs were saved from the last run.'
+                        }
+                    </p>
+                    <p className="text-xs text-neu-dim/50 font-mono mt-2">
+                        Would you like to continue from where you left off, or start fresh?
+                    </p>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex flex-col gap-3">
+                    {/* Continue */}
+                    <button
+                        disabled={isLoadingContinue || isLoadingRestart}
+                        onClick={onContinue}
+                        className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-sm uppercase tracking-widest transition-all"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(255,107,0,0.7) 0%, rgba(200,80,0,0.85) 100%)',
+                            color: '#fff',
+                            boxShadow: '0 0 20px rgba(255,107,0,0.25), 0 4px 16px rgba(0,0,0,0.35)',
+                            border: '1px solid rgba(255,107,0,0.25)',
+                            opacity: isLoadingContinue || isLoadingRestart ? 0.5 : 1,
+                        }}
+                    >
+                        {isLoadingContinue
+                            ? <Loader2 size={16} className="animate-spin" />
+                            : <Play size={16} fill="currentColor" />
+                        }
+                        {isLoadingContinue ? 'Resuming…' : 'Continue from last stop'}
+                    </button>
+
+                    {/* Start Fresh */}
+                    <button
+                        disabled={isLoadingContinue || isLoadingRestart}
+                        onClick={onRestart}
+                        className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-sm uppercase tracking-widest transition-all neu-inset text-neu-dim hover:text-neu-text"
+                        style={{ opacity: isLoadingContinue || isLoadingRestart ? 0.5 : 1 }}
+                    >
+                        {isLoadingRestart
+                            ? <Loader2 size={16} className="animate-spin" />
+                            : <Square size={14} />
+                        }
+                        {isLoadingRestart ? 'Starting fresh…' : 'Start fresh (override)'}
+                    </button>
+                </div>
+
+                {/* Dismiss hint */}
+                <p className="text-center text-[10px] text-neu-dim/30 font-mono uppercase tracking-widest">
+                    Click outside to cancel
+                </p>
             </div>
         </div>
     );

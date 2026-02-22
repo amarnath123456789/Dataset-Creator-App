@@ -20,6 +20,7 @@ router = APIRouter()
 class PipelineRunRequest(BaseModel):
     pipeline_config: PipelineConfig
     generation_config: GenerationConfig
+    resume: bool = False
 
 def _get_qa_count(project_path: Path) -> int:
     qa_path = project_path / "qa_v1.json"
@@ -52,52 +53,91 @@ def run_pipeline_task(project_name: str, config: PipelineRunRequest):
     running_file.touch()
 
     try:
-        # Pre-run cleanup: Delete old results so it's a "clean" run
-        for f in ["qa_v1.json", "qa_partial.json", "error.log", ".stop"]:
-            path = project_path / f
-            if path.exists():
-                path.unlink()
+        resume_from = 0
+        existing_qa = []
 
-        # 1. Clean
-        logger.info(f"[{project_name}] Starting Cleaning...")
-        raw_path = project_path / "raw.txt"
-        if not raw_path.exists():
-            logger.error(f"[{project_name}] Raw text not found")
-            return
-            
-        with open(raw_path, 'r', encoding='utf-8') as f:
-            raw_text = f.read()
-            
-        cleaned_text = cleaning_engine.process(raw_text)
-        
-        cleaned_path = project_path / "cleaned.txt"
-        with open(cleaned_path, 'w', encoding='utf-8') as f:
-            f.write(cleaned_text)
-            
-        # 2. Chunk
-        logger.info(f"[{project_name}] Starting Chunking...")
-        chunks = chunking_engine.chunk(
-            cleaned_text, 
-            chunk_size=config.pipeline_config.chunk_size, 
-            chunk_overlap=config.pipeline_config.chunk_overlap
+        if config.resume:
+            # ── RESUME MODE ──────────────────────────────────────────────────
+            # Skip cleaning / chunking / refining. Use existing chunks.
+            logger.info(f"[{project_name}] Resuming pipeline from partial results...")
+
+            # Load existing partial QA pairs
+            partial_path = project_path / "qa_partial.json"
+            if partial_path.exists():
+                try:
+                    with open(partial_path, 'r', encoding='utf-8') as f:
+                        existing_qa = json.load(f)
+                except Exception:
+                    existing_qa = []
+
+            # Estimate how many chunks were already processed by looking at progress.json
+            progress_path = project_path / "progress.json"
+            if progress_path.exists():
+                try:
+                    prog = json.loads(progress_path.read_text(encoding="utf-8"))
+                    resume_from = prog.get("done", 0)
+                except Exception:
+                    resume_from = 0
+
+            # Clean up stop flag so the generation loop won't bail immediately
+            for f_name in [".stop", "error.log"]:
+                p = project_path / f_name
+                if p.exists():
+                    p.unlink()
+
+        else:
+            # ── FRESH RUN ─────────────────────────────────────────────────────
+            # Pre-run cleanup: Delete old results
+            for f_name in ["qa_v1.json", "qa_partial.json", "error.log", ".stop"]:
+                path = project_path / f_name
+                if path.exists():
+                    path.unlink()
+
+            # 1. Clean
+            logger.info(f"[{project_name}] Starting Cleaning...")
+            raw_path = project_path / "raw.txt"
+            if not raw_path.exists():
+                logger.error(f"[{project_name}] Raw text not found")
+                return
+
+            with open(raw_path, 'r', encoding='utf-8') as f:
+                raw_text = f.read()
+
+            cleaned_text = cleaning_engine.process(raw_text)
+
+            cleaned_path = project_path / "cleaned.txt"
+            with open(cleaned_path, 'w', encoding='utf-8') as f:
+                f.write(cleaned_text)
+
+            # 2. Chunk
+            logger.info(f"[{project_name}] Starting Chunking...")
+            chunks = chunking_engine.chunk(
+                cleaned_text,
+                chunk_size=config.pipeline_config.chunk_size,
+                chunk_overlap=config.pipeline_config.chunk_overlap
+            )
+
+            # 3. Refine
+            logger.info(f"[{project_name}] Starting Refinement...")
+            chunks = embedding_refiner.refine(
+                chunks,
+                threshold=config.pipeline_config.similarity_threshold
+            )
+
+            chunks_path = project_path / "chunks.json"
+            with open(chunks_path, 'w', encoding='utf-8') as f:
+                json.dump(chunks, f, indent=2)
+
+        # 4. Generate (shared by both paths)
+        logger.info(f"[{project_name}] Starting Generation (resume_from={resume_from})...")
+        generation_engine.generate(
+            project_path,
+            config.generation_config,
+            resume_from=resume_from,
+            existing_qa=existing_qa,
         )
-        
-        # 3. Refine
-        logger.info(f"[{project_name}] Starting Refinement...")
-        chunks = embedding_refiner.refine(
-            chunks, 
-            threshold=config.pipeline_config.similarity_threshold
-        )
-        
-        chunks_path = project_path / "chunks.json"
-        with open(chunks_path, 'w', encoding='utf-8') as f:
-            json.dump(chunks, f, indent=2)
-            
-        # 4. Generate
-        logger.info(f"[{project_name}] Starting Generation...")
-        generation_engine.generate(project_path, config.generation_config)
         logger.info(f"[{project_name}] Pipeline Complete.")
-        
+
     except Exception as e:
         logger.error(f"[{project_name}] Pipeline Failed: {e}")
         import traceback
@@ -140,47 +180,59 @@ def stop_pipeline(project_name: str):
 
 @router.get("/{project_name}/status")
 def get_project_status(project_name: str):
-    try:
-        project_path = get_project_path(project_name)
-        
-        # Read optional progress.json
-        progress = None
-        progress_path = project_path / "progress.json"
-        if progress_path.exists():
-            try:
-                progress = json.loads(progress_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        
-        running   = (project_path / ".running").exists()
-        has_qa    = (project_path / "qa_v1.json").exists()
-        has_error = (project_path / "error.log").exists()
-        stopped   = (project_path / "qa_partial.json").exists() and not running
-        finished  = not running and has_qa and not has_error
+    project_path = get_project_path(project_name)
 
-        return {
-            "raw": (project_path / "raw.txt").exists(),
-            "cleaned": (project_path / "cleaned.txt").exists(),
-            "chunked": (project_path / "chunks.json").exists(),
-            "generated": has_qa,
-            "error": has_error,
-            "running": running,
-            "stopped": stopped,
-            "has_error": has_error,
-            "finished": finished,
-            "qa_count": _get_qa_count(project_path),
-            "chunk_count": _get_chunk_count(project_path),
-            "progress": progress,
-        }
-    except Exception:
-        return {
-            "raw": False,
-            "cleaned": False,
-            "chunked": False,
-            "generated": False,
-            "error": False,
-            "progress": None,
-        }
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # ── File-based state detection ─────────────────────────────────────────
+    running     = (project_path / ".running").exists()
+    has_qa      = (project_path / "qa_v1.json").exists()
+    has_error   = (project_path / "error.log").exists()
+    has_partial = (project_path / "qa_partial.json").exists()
+    has_raw     = (project_path / "raw.txt").exists()
+    has_cleaned = (project_path / "cleaned.txt").exists()
+    has_chunks  = (project_path / "chunks.json").exists()
+
+    stopped  = has_partial and not running
+    # finished = pipeline done successfully (has QA, not actively running)
+    # NOTE: we intentionally ignore has_error here — a stale error.log from a
+    # previous partial run must not block the 'Complete' state.
+    finished = not running and has_qa
+
+    # ── Optional progress.json ─────────────────────────────────────────────
+    progress = None
+    progress_path = project_path / "progress.json"
+    if progress_path.exists():
+        try:
+            progress = json.loads(progress_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    return {
+        # ── canonical aliases ─────────────────────────────────────────────
+        "raw":       has_raw,
+        "cleaned":   has_cleaned,
+        "chunked":   has_chunks,
+        "generated": has_qa,
+        "error":     has_error,
+        # ── has_* aliases (used by frontend) ────────────────────────────
+        "has_raw":     has_raw,
+        "has_cleaned": has_cleaned,
+        "has_chunks":  has_chunks,
+        "has_qa":      has_qa,
+        "has_error":   has_error,
+        "has_partial": has_partial,
+        # ── state flags ──────────────────────────────────────────────────
+        "running":  running,
+        "stopped":  stopped,
+        "finished": finished,
+        # ── counts & progress ────────────────────────────────────────────
+        "qa_count":    _get_qa_count(project_path),
+        "chunk_count": _get_chunk_count(project_path),
+        "progress":    progress,
+    }
+
 
 # ── Read-only data preview endpoints (no pipeline logic) ──────────────────────
 

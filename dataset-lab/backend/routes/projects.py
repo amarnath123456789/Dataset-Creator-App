@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from backend.models import ProjectCreate, ProjectStatus
-from backend.utils.filesystem import create_project, list_projects, get_project_status, get_project_path
+from backend.models import ProjectCreate
+from backend.utils.filesystem import create_project, list_projects, get_project_path
 import shutil
 
 router = APIRouter()
@@ -19,12 +19,6 @@ def create_new_project(project: ProjectCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{project_name}/status", response_model=ProjectStatus)
-def get_status(project_name: str):
-    status = get_project_status(project_name)
-    if not status:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return status
 
 @router.delete("/{project_name}")
 def delete_project(project_name: str):
