@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { llmApi } from '../api/api';
 import { Cpu, Globe, RefreshCw, AlertCircle, CheckCircle, ChevronDown } from 'lucide-react';
@@ -11,36 +11,138 @@ const OPENAI_MODELS = [
 ];
 
 // ─── Slider ───────────────────────────────────────────────────────────────────
+
 function Slider({ label, min, max, step, value, onChange }) {
-    const pct = ((value - min) / (max - min)) * 100;
+    const trackRef = useRef(null);
+    const isDragging = useRef(false);
+    const [active, setActive] = React.useState(false);
+
+    const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+
+    const clamp = useCallback((raw) => {
+        const steps = Math.round((raw - min) / step);
+        const snapped = min + steps * step;
+        const clamped = Math.min(max, Math.max(min, snapped));
+        return step < 1 ? parseFloat(clamped.toFixed(2)) : Math.round(clamped);
+    }, [min, max, step]);
+
+    const getValueFromPointer = useCallback((e) => {
+        const rect = trackRef.current.getBoundingClientRect();
+        const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+        return clamp(min + ratio * (max - min));
+    }, [min, max, clamp]);
+
+    const onPointerDown = useCallback((e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        isDragging.current = true;
+        setActive(true);
+        onChange(getValueFromPointer(e));
+    }, [getValueFromPointer, onChange]);
+
+    const onPointerMove = useCallback((e) => {
+        if (!isDragging.current) return;
+        onChange(getValueFromPointer(e));
+    }, [getValueFromPointer, onChange]);
+
+    const onPointerUp = useCallback(() => {
+        isDragging.current = false;
+        setActive(false);
+    }, []);
+
     return (
-        <div>
+        <div className="select-none">
             <div className="flex justify-between items-center mb-3">
                 <label className="text-xs font-bold text-neu-dim tracking-widest uppercase">{label}</label>
-                <span className="text-xs font-mono text-neu-accent bg-neu-accent/10 px-2 py-0.5 rounded border border-neu-accent/20">{value}</span>
+                <span
+                    className="text-xs font-mono px-2 py-0.5 rounded border transition-all duration-200"
+                    style={{
+                        color: active ? 'var(--accent-light)' : 'var(--accent)',
+                        background: active ? 'rgba(255,107,0,0.15)' : 'rgba(255,107,0,0.08)',
+                        borderColor: active ? 'rgba(255,107,0,0.4)' : 'rgba(255,107,0,0.2)',
+                        boxShadow: active ? '0 0 8px rgba(255,107,0,0.3)' : 'none',
+                    }}
+                >
+                    {value}
+                </span>
             </div>
-            <div className="relative h-8 flex items-center">
-                <input
-                    type="range" min={min} max={max} step={step} value={value}
-                    onChange={e => onChange(step < 1 ? parseFloat(e.target.value) : parseInt(e.target.value))}
-                    className="w-full appearance-none bg-transparent z-20 cursor-pointer
-                    [&::-webkit-slider-thumb]:appearance-none
-                    [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 
-                    [&::-webkit-slider-thumb]:rounded-full 
-                    [&::-webkit-slider-thumb]:bg-neu-base 
-                    [&::-webkit-slider-thumb]:shadow-[5px_5px_10px_#141619,-5px_-5px_10px_#2e343b] 
-                    [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-white/[0.05]
-                    [&::-webkit-slider-thumb]:mt-[-5px]"
-                />
-                <div className="absolute top-1/2 left-0 w-full h-3 neu-trough rounded-full -translate-y-1/2 z-10 pointer-events-none" />
+
+            {/* Track area — captures pointer events */}
+            <div
+                ref={trackRef}
+                className="relative h-10 flex items-center cursor-pointer touch-none"
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerLeave={onPointerUp}
+            >
+                {/* Sunken trough */}
                 <div
-                    className="absolute top-1/2 left-0 h-[6px] rounded-full bg-neu-accent/80 -translate-y-1/2 z-10 pointer-events-none shadow-[0_0_8px_rgba(255,107,0,0.5)] transition-all duration-100"
-                    style={{ width: `${pct}%` }}
+                    className="absolute inset-y-0 my-auto w-full rounded-full pointer-events-none"
+                    style={{
+                        height: '8px',
+                        background: 'var(--bg-dark)',
+                        boxShadow: 'inset 3px 3px 7px #111315, inset -3px -3px 7px #2c323a',
+                        border: '1px solid rgba(0,0,0,0.35)',
+                    }}
                 />
+
+                {/* Filled portion */}
+                <div
+                    className="absolute left-0 rounded-full pointer-events-none"
+                    style={{
+                        height: '8px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: `${pct}%`,
+                        background: active
+                            ? 'linear-gradient(90deg, #ff6b00, #ff9d4d)'
+                            : 'linear-gradient(90deg, #cc5500, #ff6b00)',
+                        boxShadow: active
+                            ? '0 0 12px rgba(255,107,0,0.7), 0 0 24px rgba(255,107,0,0.3)'
+                            : '0 0 6px rgba(255,107,0,0.4)',
+                        transition: 'background 0.2s ease, box-shadow 0.2s ease',
+                        borderRadius: '99px',
+                    }}
+                />
+
+                {/* Thumb */}
+                <div
+                    className="absolute pointer-events-none"
+                    style={{
+                        left: `calc(${pct}% - ${active ? 13 : 11}px)`,
+                        top: '50%',
+                        transform: `translateY(-50%) scale(${active ? 1.2 : 1})`,
+                        width: active ? '26px' : '22px',
+                        height: active ? '26px' : '22px',
+                        borderRadius: '50%',
+                        background: 'var(--bg-base)',
+                        boxShadow: active
+                            ? `4px 4px 8px #111315, -4px -4px 8px #2e343b, 0 0 0 2px var(--accent), 0 0 14px rgba(255,107,0,0.6)`
+                            : `5px 5px 10px #111315, -5px -5px 10px #2e343b, 0 0 0 1px rgba(255,255,255,0.06)`,
+                        transition: 'width 0.15s ease, height 0.15s ease, left 0.05s linear, box-shadow 0.15s ease, transform 0.15s ease',
+                        zIndex: 10,
+                    }}
+                >
+                    {/* Inner dot */}
+                    <div
+                        style={{
+                            position: 'absolute',
+                            inset: '50%',
+                            transform: 'translate(-50%, -50%)',
+                            width: active ? '8px' : '6px',
+                            height: active ? '8px' : '6px',
+                            borderRadius: '50%',
+                            background: 'var(--accent)',
+                            boxShadow: active ? '0 0 8px rgba(255,107,0,0.9)' : '0 0 4px rgba(255,107,0,0.5)',
+                            transition: 'all 0.15s ease',
+                        }}
+                    />
+                </div>
             </div>
         </div>
     );
 }
+
 
 // ─── Provider Button ──────────────────────────────────────────────────────────
 function ProviderBtn({ active, onClick, icon: Icon, label, sublabel }) {
@@ -54,8 +156,8 @@ function ProviderBtn({ active, onClick, icon: Icon, label, sublabel }) {
                 <div className="absolute top-0 left-0 w-full h-[2px] bg-neu-accent shadow-[0_0_12px_rgba(255,107,0,0.6)]" />
             )}
             <div className={`p-3 rounded-xl transition-all ${active
-                    ? 'bg-neu-accent/10 text-neu-accent shadow-[0_0_10px_rgba(255,107,0,0.3)]'
-                    : 'text-neu-dim bg-neu-base shadow-[3px_3px_6px_#141619,-3px_-3px_6px_#2e343b]'
+                ? 'bg-neu-accent/10 text-neu-accent shadow-[0_0_10px_rgba(255,107,0,0.3)]'
+                : 'text-neu-dim bg-neu-base shadow-[3px_3px_6px_#141619,-3px_-3px_6px_#2e343b]'
                 }`}>
                 <Icon size={22} strokeWidth={1.5} />
             </div>
@@ -178,8 +280,8 @@ function ApiSection({ generationConfig, setGenerationConfig }) {
                             key={m.id}
                             onClick={() => set('model_name', m.id)}
                             className={`flex flex-col gap-1 px-4 py-3 rounded-xl text-left transition-all duration-200 ${generationConfig.model_name === m.id
-                                    ? 'neu-inset border border-neu-accent/20'
-                                    : 'neu-plate hover:-translate-y-0.5'
+                                ? 'neu-inset border border-neu-accent/20'
+                                : 'neu-plate hover:-translate-y-0.5'
                                 }`}
                         >
                             <div className="flex items-center justify-between">
