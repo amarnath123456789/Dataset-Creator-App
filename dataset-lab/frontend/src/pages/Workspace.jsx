@@ -181,37 +181,39 @@ export default function Workspace() {
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`relative group flex items-center gap-4 px-5 py-4 rounded-2xl text-left outline-none transition-all duration-300 ${isActive
-                                    ? 'neu-inset text-neu-accent'
-                                    : 'neu-plate text-neu-dim hover:text-neu-text'
+                                className={`relative group flex items-center gap-4 px-5 py-4 rounded-[20px] text-left outline-none shrink-0 touch-manipulation select-none overflow-hidden ${isActive
+                                    ? 'bg-neu-dark text-neu-accent shadow-[inset_4px_4px_10px_#0e1012,inset_-4px_-4px_10px_#272d33] border border-black/40 scale-[0.98]'
+                                    : 'bg-neu-base text-neu-dim shadow-[6px_6px_14px_#111315,-6px_-6px_14px_#2e343b] hover:shadow-[8px_8px_18px_#111315,-8px_-8px_18px_#2e343b] hover:-translate-y-0.5 border border-white/5'
                                     }`}
+                                style={{
+                                    transition: 'transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.1s cubic-bezier(0.4, 0, 0.2, 1), background 0.15s ease'
+                                }}
                             >
-                                {/* Active top stripe */}
-                                {isActive && (
-                                    <div className="absolute top-0 left-4 right-4 h-[2px] bg-neu-accent rounded-full shadow-[0_0_8px_rgba(255,107,0,0.6)]" />
-                                )}
-
-                                {/* Icon */}
-                                <div className={`flex-shrink-0 p-2.5 rounded-xl transition-all duration-300 ${isActive
-                                    ? 'bg-neu-accent/10 shadow-[0_0_12px_rgba(255,107,0,0.25)]'
-                                    : 'bg-neu-base shadow-[3px_3px_6px_#141619,-3px_-3px_6px_#2e343b]'
+                                {/* Icon Panel */}
+                                <div className={`flex-shrink-0 p-2.5 rounded-[12px] transition-all duration-150 ${isActive
+                                    ? 'bg-[#15181b] shadow-[inset_2px_2px_4px_#0e1012,inset_-2px_-2px_4px_#272d33,0_0_12px_rgba(255,107,0,0.15)] ring-1 ring-neu-accent/20'
+                                    : 'bg-neu-base shadow-[3px_3px_6px_#111315,-3px_-3px_6px_#2e343b]'
                                     }`}>
                                     <tab.icon
-                                        size={16}
-                                        strokeWidth={isActive ? 2.5 : 1.5}
-                                        className={isActive ? 'text-neu-accent' : 'text-neu-dim'}
+                                        size={18}
+                                        strokeWidth={isActive ? 2 : 1.5}
+                                        className={isActive ? 'text-neu-accent drop-shadow-[0_0_8px_rgba(255,107,0,0.8)]' : 'text-neu-dim'}
                                     />
                                 </div>
 
                                 {/* Label */}
-                                <div className="flex-1 min-w-0">
-                                    <span className={`text-sm font-semibold block truncate ${isActive ? 'text-neu-accent' : 'text-neu-dim'}`}>
+                                <div className="flex-1 min-w-0 pr-4">
+                                    <span className={`text-[13px] font-bold tracking-wide block truncate transition-colors duration-150 ${isActive ? 'text-neu-accent drop-shadow-[0_0_8px_rgba(255,107,0,0.4)]' : 'text-neu-text'
+                                        }`}>
                                         {tab.label}
                                     </span>
                                 </div>
 
-                                {/* LED */}
-                                <div className={`led flex-shrink-0 transition-all duration-300 ${isActive ? 'led-on' : 'led-off'}`} />
+                                {/* Status LED */}
+                                <div className={`absolute right-5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full transition-all duration-200 ${isActive
+                                    ? 'bg-neu-accent shadow-[0_0_10px_rgba(255,107,0,1)]'
+                                    : 'bg-black/40 shadow-[inset_1px_1px_2px_#000]'
+                                    }`} />
                             </button>
                         );
                     })}
@@ -260,15 +262,24 @@ export default function Workspace() {
                             <button
                                 onClick={() => uploadFile && uploadMutation.mutate(uploadFile)}
                                 disabled={!uploadFile || uploadMutation.isPending}
-                                className={`flex items-center gap-3 px-10 py-4 rounded-2xl font-bold tracking-widest text-sm uppercase transition-all duration-300 ${uploadFile && !uploadMutation.isPending
-                                    ? 'neu-btn neu-btn-primary shadow-[var(--sh-flat),var(--glow-sm)] hover:shadow-[var(--sh-hover),var(--glow)]'
-                                    : 'neu-inset text-neu-dim/30 cursor-not-allowed'
+                                className={`group relative flex items-center justify-center gap-4 px-10 py-4 rounded-[20px] font-bold tracking-widest text-[13px] uppercase touch-manipulation select-none outline-none ${!uploadFile || uploadMutation.isPending
+                                        ? 'bg-[#15181b] text-neu-dim/30 shadow-[inset_4px_4px_10px_#0e1012,inset_-4px_-4px_10px_#272d33] cursor-not-allowed border-transparent'
+                                        : 'bg-neu-base text-neu-text shadow-[6px_6px_14px_#111315,-6px_-6px_14px_#2e343b] hover:shadow-[8px_8px_18px_#111315,-8px_-8px_18px_#2e343b] hover:-translate-y-0.5 border border-white/5 active:bg-neu-dark active:text-neu-accent active:shadow-[inset_4px_4px_10px_#0e1012,inset_-4px_-4px_10px_#272d33] active:border-black/40 active:scale-[0.98]'
                                     }`}
+                                style={{ transition: 'transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.1s cubic-bezier(0.4, 0, 0.2, 1), background 0.15s ease' }}
                             >
-                                {uploadMutation.isPending
-                                    ? <><Loader2 size={16} className="animate-spin" /> Uploading…</>
-                                    : <><Zap size={16} /> Ingest File</>
-                                }
+                                <div className={`flex items-center justify-center p-2 rounded-[12px] transition-all duration-150 ${!uploadFile || uploadMutation.isPending
+                                        ? 'bg-transparent text-neu-dim/30'
+                                        : 'bg-[#15181b] text-neu-accent shadow-[inset_2px_2px_4px_#0e1012,inset_-2px_-2px_4px_#272d33,0_0_12px_rgba(255,107,0,0.15)] ring-1 ring-neu-accent/20 group-active:drop-shadow-[0_0_8px_rgba(255,107,0,0.8)]'
+                                    }`}>
+                                    {uploadMutation.isPending
+                                        ? <Loader2 size={18} className="animate-spin" />
+                                        : <Zap size={18} />
+                                    }
+                                </div>
+                                <span className={!uploadFile || uploadMutation.isPending ? '' : 'group-hover:text-neu-accent group-active:text-neu-accent group-active:drop-shadow-[0_0_8px_rgba(255,107,0,0.4)] transition-colors'}>
+                                    {uploadMutation.isPending ? 'Uploading…' : 'Ingest File'}
+                                </span>
                             </button>
 
                             {status?.has_raw && (
@@ -350,16 +361,24 @@ export default function Workspace() {
                                 <button
                                     onClick={handleEngageClick}
                                     disabled={runPipelineMutation.isPending || resumePipelineMutation.isPending || status?.running || !status?.has_raw}
-                                    className={`flex items-center gap-4 px-12 py-5 rounded-2xl text-base font-bold tracking-widest uppercase transition-all duration-300 ${status?.running || runPipelineMutation.isPending || resumePipelineMutation.isPending || !status?.has_raw
-                                        ? 'neu-inset text-neu-dim/30 cursor-not-allowed'
-                                        : 'neu-btn neu-btn-primary shadow-[var(--sh-flat),var(--glow-sm)] hover:shadow-[var(--sh-hover),var(--glow)] active:shadow-[var(--sh-press)]'
+                                    className={`group relative flex items-center justify-center gap-4 px-12 py-5 rounded-[20px] font-bold tracking-widest text-[15px] uppercase touch-manipulation select-none outline-none ${status?.running || runPipelineMutation.isPending || resumePipelineMutation.isPending || !status?.has_raw
+                                            ? 'bg-[#15181b] text-neu-dim/30 shadow-[inset_4px_4px_10px_#0e1012,inset_-4px_-4px_10px_#272d33] cursor-not-allowed border-transparent'
+                                            : 'bg-neu-base text-neu-text shadow-[6px_6px_14px_#111315,-6px_-6px_14px_#2e343b] hover:shadow-[8px_8px_18px_#111315,-8px_-8px_18px_#2e343b] hover:-translate-y-0.5 border border-white/5 active:bg-neu-dark active:text-neu-accent active:shadow-[inset_4px_4px_10px_#0e1012,inset_-4px_-4px_10px_#272d33] active:border-black/40 active:scale-[0.98]'
                                         }`}
+                                    style={{ transition: 'transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.1s cubic-bezier(0.4, 0, 0.2, 1), background 0.15s ease' }}
                                 >
-                                    {status?.running || runPipelineMutation.isPending || resumePipelineMutation.isPending
-                                        ? <Loader2 size={20} className="animate-spin" />
-                                        : <Play size={20} fill="currentColor" />
-                                    }
-                                    {status?.running ? 'Processing…' : status?.stopped ? 'Resume / Rerun' : 'Engage'}
+                                    <div className={`flex items-center justify-center p-2.5 rounded-[12px] transition-all duration-150 ${status?.running || runPipelineMutation.isPending || resumePipelineMutation.isPending || !status?.has_raw
+                                            ? 'bg-transparent text-neu-dim/30'
+                                            : 'bg-[#15181b] text-neu-accent shadow-[inset_2px_2px_4px_#0e1012,inset_-2px_-2px_4px_#272d33,0_0_12px_rgba(255,107,0,0.15)] ring-1 ring-neu-accent/20 group-active:drop-shadow-[0_0_8px_rgba(255,107,0,0.8)]'
+                                        }`}>
+                                        {status?.running || runPipelineMutation.isPending || resumePipelineMutation.isPending
+                                            ? <Loader2 size={20} className="animate-spin" />
+                                            : <Play size={20} fill="currentColor" />
+                                        }
+                                    </div>
+                                    <span className={status?.running || runPipelineMutation.isPending || resumePipelineMutation.isPending || !status?.has_raw ? '' : 'group-hover:text-neu-accent group-active:text-neu-accent group-active:drop-shadow-[0_0_8px_rgba(255,107,0,0.4)] transition-colors'}>
+                                        {status?.running ? 'Processing…' : status?.stopped ? 'Resume / Rerun' : 'Engage'}
+                                    </span>
                                 </button>
 
                                 {!status?.has_raw && (
@@ -425,13 +444,21 @@ export default function Workspace() {
                                     link.click();
                                 }}
                                 disabled={!status?.has_qa}
-                                className={`flex items-center gap-3 px-10 py-4 rounded-2xl font-bold tracking-widest text-sm uppercase transition-all duration-300 ${status?.has_qa
-                                    ? 'neu-btn neu-btn-primary shadow-[var(--sh-flat),var(--glow-sm)] hover:shadow-[var(--sh-hover),var(--glow)]'
-                                    : 'neu-inset text-neu-dim/30 cursor-not-allowed'
+                                className={`group relative flex items-center justify-center gap-4 px-10 py-4 rounded-[20px] font-bold tracking-widest text-[13px] uppercase touch-manipulation select-none outline-none ${!status?.has_qa
+                                        ? 'bg-[#15181b] text-neu-dim/30 shadow-[inset_4px_4px_10px_#0e1012,inset_-4px_-4px_10px_#272d33] cursor-not-allowed border-transparent'
+                                        : 'bg-neu-base text-neu-text shadow-[6px_6px_14px_#111315,-6px_-6px_14px_#2e343b] hover:shadow-[8px_8px_18px_#111315,-8px_-8px_18px_#2e343b] hover:-translate-y-0.5 border border-white/5 active:bg-neu-dark active:text-neu-accent active:shadow-[inset_4px_4px_10px_#0e1012,inset_-4px_-4px_10px_#272d33] active:border-black/40 active:scale-[0.98]'
                                     }`}
+                                style={{ transition: 'transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.1s cubic-bezier(0.4, 0, 0.2, 1), background 0.15s ease' }}
                             >
-                                <Download size={16} />
-                                Download JSONL
+                                <div className={`flex items-center justify-center p-2 rounded-[12px] transition-all duration-150 ${!status?.has_qa
+                                        ? 'bg-transparent text-neu-dim/30'
+                                        : 'bg-[#15181b] text-neu-accent shadow-[inset_2px_2px_4px_#0e1012,inset_-2px_-2px_4px_#272d33,0_0_12px_rgba(255,107,0,0.15)] ring-1 ring-neu-accent/20 group-active:drop-shadow-[0_0_8px_rgba(255,107,0,0.8)]'
+                                    }`}>
+                                    <Download size={18} />
+                                </div>
+                                <span className={!status?.has_qa ? '' : 'group-hover:text-neu-accent group-active:text-neu-accent group-active:drop-shadow-[0_0_8px_rgba(255,107,0,0.4)] transition-colors'}>
+                                    Download JSONL
+                                </span>
                             </button>
 
                             {!status?.has_qa && (

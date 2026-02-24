@@ -89,8 +89,8 @@ Instructions:
                         onClick={() => saveMutation.mutate(prompt)}
                         disabled={!isDirty || saveMutation.isPending}
                         className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold tracking-wide transition-all duration-200 ${isDirty
-                                ? 'neu-btn neu-btn-primary !rounded-xl shadow-[var(--sh-flat),var(--glow-sm)]'
-                                : 'text-neu-dim/30 cursor-not-allowed neu-inset'
+                            ? 'neu-btn neu-btn-primary !rounded-xl shadow-[var(--sh-flat),var(--glow-sm)]'
+                            : 'text-neu-dim/30 cursor-not-allowed neu-inset'
                             }`}
                     >
                         {saveMutation.isPending ? (
@@ -114,17 +114,17 @@ Instructions:
             )}
 
             {/* Textarea */}
-            <div className="relative group">
-                {/* Line-number gutter hint */}
-                <div className="absolute top-0 left-0 w-12 h-full bg-black/20 rounded-l-2xl pointer-events-none border-r border-white/5 z-10"></div>
+            <div
+                className="relative group bg-[#111315] shadow-[var(--sh-deep)] rounded-[16px] border border-black/50 overflow-hidden flex transition-all duration-250 focus-within:ring-1 focus-within:ring-neu-accent focus-within:border-neu-accent/40"
+            >
+                {/* Physical Gutter */}
+                <div className="w-12 bg-black/20 border-r border-white/5 shrink-0 pointer-events-none select-none" />
 
                 <textarea
                     value={prompt}
                     onChange={(e) => { setPrompt(e.target.value); setIsDirty(true); }}
                     spellCheck={false}
-                    rows={22}
-                    className="neu-textarea pl-16 w-full"
-                    style={{ minHeight: '460px' }}
+                    className="flex-1 bg-transparent border-none outline-none text-[#4ade80] p-6 font-mono text-sm leading-[1.7] resize-y min-h-[460px] custom-scrollbar block w-full m-0"
                 />
 
                 {/* Floating variable chips */}
@@ -134,7 +134,7 @@ Instructions:
                         Variables
                     </div>
                     {['{domain}', '{qa_count}', '{chunk}'].map(v => (
-                        <div key={v} className="neu-chip self-end">{v}</div>
+                        <div key={v} className="neu-chip self-end pointer-events-none">{v}</div>
                     ))}
                 </div>
             </div>

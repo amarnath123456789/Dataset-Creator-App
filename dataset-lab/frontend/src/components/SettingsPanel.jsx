@@ -16,8 +16,7 @@ function Slider({ label, min, max, step, value, onChange }) {
     const trackRef = useRef(null);
     const isDragging = useRef(false);
     const [active, setActive] = React.useState(false);
-
-    const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
+    const [dragPct, setDragPct] = React.useState(null); // Pure visual tracking
 
     const clamp = useCallback((raw) => {
         const steps = Math.round((raw - min) / step);
@@ -26,28 +25,42 @@ function Slider({ label, min, max, step, value, onChange }) {
         return step < 1 ? parseFloat(clamped.toFixed(2)) : Math.round(clamped);
     }, [min, max, step]);
 
-    const getValueFromPointer = useCallback((e) => {
+    const handlePointerMove = useCallback((e) => {
+        if (!trackRef.current) return;
         const rect = trackRef.current.getBoundingClientRect();
+        // Calculate clamped ratio strictly between 0 and 1
         const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-        return clamp(min + ratio * (max - min));
-    }, [min, max, clamp]);
+
+        // 1. Update visual indicator smoothly (no steps)
+        setDragPct(ratio * 100);
+
+        // 2. Propagate the snapped value to parent
+        onChange(clamp(min + ratio * (max - min)));
+    }, [min, max, clamp, onChange]);
 
     const onPointerDown = useCallback((e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         isDragging.current = true;
         setActive(true);
-        onChange(getValueFromPointer(e));
-    }, [getValueFromPointer, onChange]);
+        handlePointerMove(e);
+    }, [handlePointerMove]);
 
     const onPointerMove = useCallback((e) => {
         if (!isDragging.current) return;
-        onChange(getValueFromPointer(e));
-    }, [getValueFromPointer, onChange]);
+        handlePointerMove(e);
+    }, [handlePointerMove]);
 
     const onPointerUp = useCallback(() => {
         isDragging.current = false;
         setActive(false);
+        setDragPct(null); // Snap back to true value visually on release
     }, []);
+
+    // If actively dragging, use the buttery smooth internal percentage. 
+    // Otherwise, base the visual position on the parent's actual grounded value.
+    const pct = active && dragPct !== null
+        ? dragPct
+        : Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
 
     return (
         <div className="select-none">
@@ -107,33 +120,31 @@ function Slider({ label, min, max, step, value, onChange }) {
 
                 {/* Thumb */}
                 <div
-                    className="absolute pointer-events-none"
+                    className="absolute pointer-events-none flex items-center justify-center"
                     style={{
                         left: `calc(${pct}% - ${active ? 13 : 11}px)`,
                         top: '50%',
-                        transform: `translateY(-50%) scale(${active ? 1.2 : 1})`,
+                        transform: `translateY(-50%) scale(${active ? 1.15 : 1})`,
                         width: active ? '26px' : '22px',
                         height: active ? '26px' : '22px',
                         borderRadius: '50%',
-                        background: 'var(--bg-base)',
+                        background: 'var(--bg-dark)',
+                        border: active ? '2px solid var(--accent)' : '1px solid rgba(255,107,0,0.4)',
                         boxShadow: active
-                            ? `4px 4px 8px #111315, -4px -4px 8px #2e343b, 0 0 0 2px var(--accent), 0 0 14px rgba(255,107,0,0.6)`
-                            : `5px 5px 10px #111315, -5px -5px 10px #2e343b, 0 0 0 1px rgba(255,255,255,0.06)`,
-                        transition: 'width 0.15s ease, height 0.15s ease, left 0.05s linear, box-shadow 0.15s ease, transform 0.15s ease',
+                            ? `0 0 16px rgba(255,107,0,0.5), inset 0 2px 4px rgba(255,255,255,0.1), 4px 4px 10px rgba(0,0,0,0.6)`
+                            : `0 4px 8px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.05)`,
+                        transition: 'width 0.15s ease, height 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, border 0.15s ease',
                         zIndex: 10,
                     }}
                 >
-                    {/* Inner dot */}
+                    {/* Inner glowing core */}
                     <div
                         style={{
-                            position: 'absolute',
-                            inset: '50%',
-                            transform: 'translate(-50%, -50%)',
-                            width: active ? '8px' : '6px',
-                            height: active ? '8px' : '6px',
+                            width: active ? '8px' : '4px',
+                            height: active ? '8px' : '4px',
                             borderRadius: '50%',
-                            background: 'var(--accent)',
-                            boxShadow: active ? '0 0 8px rgba(255,107,0,0.9)' : '0 0 4px rgba(255,107,0,0.5)',
+                            background: active ? 'var(--accent-light)' : 'var(--accent)',
+                            boxShadow: active ? '0 0 10px var(--accent-light)' : 'none',
                             transition: 'all 0.15s ease',
                         }}
                     />
@@ -143,28 +154,104 @@ function Slider({ label, min, max, step, value, onChange }) {
     );
 }
 
+// ─── Custom Select ────────────────────────────────────────────────────────────
+function CustomSelect({ value, options, onChange }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef(null);
+
+    // Close when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (containerRef.current && !containerRef.current.contains(e.target)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const selectedOption = options.find(o => o.value === value) || options[0];
+
+    return (
+        <div ref={containerRef} className={`relative ${isOpen ? 'z-50' : 'z-30'}`}>
+            {/* The closed / trigger state */}
+            <button
+                type="button"
+                onClick={() => setIsOpen(!isOpen)}
+                className={`w-full neu-input flex items-center justify-between text-left transition-all duration-200 relative z-20 ${isOpen
+                    ? 'rounded-b-none border-t-neu-accent border-l-neu-accent border-r-neu-accent border-b-transparent shadow-[0_0_15px_rgba(255,107,0,0.2)] bg-neu-dark'
+                    : 'border-transparent'
+                    }`}
+                style={isOpen ? { boxShadow: '0 -4px 12px rgba(255,107,0,0.1)' } : {}}
+            >
+                <span className={!value ? 'text-neu-dim/30' : 'text-neu-text'}>
+                    {selectedOption?.label || value || "Select..."}
+                </span>
+                <ChevronDown size={14} className={`text-neu-dim transition-transform duration-300 ${isOpen ? 'rotate-180 text-neu-accent' : ''}`} />
+            </button>
+
+            {/* The open dropdown menu */}
+            {isOpen && (
+                <div className="absolute top-[100%] left-0 w-full bg-neu-dark overflow-hidden shadow-[0_15px_30px_rgba(0,0,0,0.8)] border border-t-0 border-neu-accent rounded-b-xl animate-in fade-in slide-in-from-top-1 duration-200 z-10 before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-white/5">
+                    <div className="max-h-60 overflow-y-auto w-full custom-scrollbar pb-1">
+                        {options.map((opt) => (
+                            <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => {
+                                    onChange(opt.value);
+                                    setIsOpen(false);
+                                }}
+                                className={`w-full text-left px-4 py-3 text-sm transition-colors duration-150 flex items-center justify-between group ${value === opt.value
+                                    ? 'bg-neu-accent/10 border-l-[3px] border-neu-accent text-neu-accent font-medium'
+                                    : 'hover:bg-white/[0.03] text-neu-dim hover:text-neu-text border-l-[3px] border-transparent'
+                                    }`}
+                            >
+                                <span>{opt.label}</span>
+                                {value === opt.value && <div className="w-1.5 h-1.5 rounded-full bg-neu-accent shadow-[0_0_8px_rgba(255,107,0,0.8)]" />}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
 
 // ─── Provider Button ──────────────────────────────────────────────────────────
 function ProviderBtn({ active, onClick, icon: Icon, label, sublabel }) {
     return (
         <button
             onClick={onClick}
-            className={`flex-1 flex flex-col items-center gap-3 py-5 px-4 rounded-2xl transition-all duration-300 relative overflow-hidden ${active ? 'neu-inset' : 'neu-plate hover:-translate-y-1'
+            className={`flex-1 flex flex-col items-center gap-3 py-5 px-4 rounded-2xl relative overflow-hidden shrink-0 touch-manipulation select-none outline-none ${active
+                ? 'bg-neu-dark text-neu-accent shadow-[inset_4px_4px_10px_#0e1012,inset_-4px_-4px_10px_#272d33] border border-black/40 scale-[0.98]'
+                : 'bg-neu-base text-neu-dim shadow-[6px_6px_14px_#111315,-6px_-6px_14px_#2e343b] hover:shadow-[8px_8px_18px_#111315,-8px_-8px_18px_#2e343b] hover:-translate-y-0.5 border border-white/5'
                 }`}
+            style={{
+                transition: 'transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.1s cubic-bezier(0.4, 0, 0.2, 1), background 0.15s ease'
+            }}
         >
-            {active && (
-                <div className="absolute top-0 left-0 w-full h-[2px] bg-neu-accent shadow-[0_0_12px_rgba(255,107,0,0.6)]" />
-            )}
-            <div className={`p-3 rounded-xl transition-all ${active
-                ? 'bg-neu-accent/10 text-neu-accent shadow-[0_0_10px_rgba(255,107,0,0.3)]'
-                : 'text-neu-dim bg-neu-base shadow-[3px_3px_6px_#141619,-3px_-3px_6px_#2e343b]'
+            <div className={`p-3 rounded-[14px] transition-all duration-150 ${active
+                ? 'bg-[#15181b] shadow-[inset_2px_2px_4px_#0e1012,inset_-2px_-2px_4px_#272d33,0_0_15px_rgba(255,107,0,0.15)] text-neu-accent ring-1 ring-neu-accent/20'
+                : 'bg-neu-base shadow-[4px_4px_8px_#111315,-4px_-4px_8px_#2e343b] text-neu-dim'
                 }`}>
-                <Icon size={22} strokeWidth={1.5} />
+                <Icon size={24} strokeWidth={active ? 2 : 1.5} className={active ? 'drop-shadow-[0_0_8px_rgba(255,107,0,0.8)]' : ''} />
             </div>
-            <div>
-                <p className={`text-sm font-bold tracking-wide text-center ${active ? 'text-neu-accent' : 'text-neu-text'}`}>{label}</p>
-                <p className="text-[10px] font-mono text-neu-dim text-center mt-0.5">{sublabel}</p>
+
+            <div className="flex flex-col items-center gap-1 mt-1">
+                <p className={`text-[13px] font-bold tracking-widest uppercase transition-colors duration-150 ${active ? 'text-neu-accent drop-shadow-[0_0_8px_rgba(255,107,0,0.4)]' : 'text-neu-text'}`}>
+                    {label}
+                </p>
+                <p className={`text-[10px] font-mono transition-colors duration-150 ${active ? 'text-neu-accent/70' : 'text-neu-dim/70'}`}>
+                    {sublabel}
+                </p>
             </div>
+
+            {/* Active Indication LED */}
+            <div className={`absolute top-4 right-4 w-2 h-2 rounded-full transition-all duration-200 ${active
+                ? 'bg-neu-accent shadow-[0_0_10px_rgba(255,107,0,1)]'
+                : 'bg-black/40 shadow-[inset_1px_1px_2px_#000]'
+                }`} />
         </button>
     );
 }
@@ -211,16 +298,11 @@ function LocalSection({ generationConfig, setGenerationConfig }) {
             {ollamaUp && models.length > 0 ? (
                 <div>
                     <label className="block text-xs font-bold text-neu-dim tracking-widest uppercase mb-3">Select Model</label>
-                    <div className="relative">
-                        <select
-                            value={generationConfig.model_name}
-                            onChange={e => setGenerationConfig(prev => ({ ...prev, model_name: e.target.value, provider: 'local' }))}
-                            className="neu-input appearance-none cursor-pointer"
-                        >
-                            {models.map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                        <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neu-dim pointer-events-none" />
-                    </div>
+                    <CustomSelect
+                        value={generationConfig.model_name}
+                        onChange={v => setGenerationConfig(prev => ({ ...prev, model_name: v, provider: 'local' }))}
+                        options={models.map(m => ({ value: m, label: m }))}
+                    />
                     <p className="text-[10px] font-mono text-neu-dim mt-2">These are your locally pulled Ollama models.</p>
                 </div>
             ) : !isLoading && (
@@ -275,22 +357,35 @@ function ApiSection({ generationConfig, setGenerationConfig }) {
             <div>
                 <label className="block text-xs font-bold text-neu-dim tracking-widest uppercase mb-3">Model</label>
                 <div className="grid grid-cols-2 gap-3">
-                    {OPENAI_MODELS.map(m => (
-                        <button
-                            key={m.id}
-                            onClick={() => set('model_name', m.id)}
-                            className={`flex flex-col gap-1 px-4 py-3 rounded-xl text-left transition-all duration-200 ${generationConfig.model_name === m.id
-                                ? 'neu-inset border border-neu-accent/20'
-                                : 'neu-plate hover:-translate-y-0.5'
-                                }`}
-                        >
-                            <div className="flex items-center justify-between">
-                                <span className={`font-mono text-xs font-bold ${generationConfig.model_name === m.id ? 'text-neu-accent' : 'text-neu-text'}`}>{m.id}</span>
-                                {generationConfig.model_name === m.id && <div className="led led-on" />}
-                            </div>
-                            <span className="text-[9px] text-neu-dim font-mono uppercase tracking-wide">{m.label}</span>
-                        </button>
-                    ))}
+                    {OPENAI_MODELS.map(m => {
+                        const active = generationConfig.model_name === m.id;
+                        return (
+                            <button
+                                key={m.id}
+                                onClick={() => set('model_name', m.id)}
+                                className={`flex flex-col gap-1 px-4 py-3 rounded-2xl relative overflow-hidden shrink-0 touch-manipulation select-none outline-none text-left ${active
+                                    ? 'bg-neu-dark shadow-[inset_4px_4px_10px_#0e1012,inset_-4px_-4px_10px_#272d33] border border-black/40 scale-[0.98]'
+                                    : 'bg-neu-base shadow-[4px_4px_10px_#111315,-4px_-4px_10px_#2e343b] hover:shadow-[6px_6px_14px_#111315,-6px_-6px_14px_#2e343b] hover:-translate-y-0.5 border border-white/5'
+                                    }`}
+                                style={{
+                                    transition: 'transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.1s cubic-bezier(0.4, 0, 0.2, 1), background 0.15s ease'
+                                }}
+                            >
+                                <span className={`font-mono text-[13px] font-bold transition-colors duration-150 ${active ? 'text-neu-accent drop-shadow-[0_0_8px_rgba(255,107,0,0.4)]' : 'text-neu-text'}`}>
+                                    {m.id}
+                                </span>
+                                <span className={`text-[9px] font-mono uppercase tracking-wide transition-colors duration-150 ${active ? 'text-neu-accent/70' : 'text-neu-dim/70'}`}>
+                                    {m.label}
+                                </span>
+
+                                {/* Status LED */}
+                                <div className={`absolute top-4 right-4 w-2 h-2 rounded-full transition-all duration-200 ${active
+                                    ? 'bg-neu-accent shadow-[0_0_10px_rgba(255,107,0,1)]'
+                                    : 'bg-black/40 shadow-[inset_1px_1px_2px_#000]'
+                                    }`} />
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {/* Custom model ID */}
@@ -392,18 +487,15 @@ export default function SettingsPanel({ pipelineConfig, setPipelineConfig, gener
                         />
                         <div>
                             <label className="block text-xs font-bold text-neu-dim tracking-widest uppercase mb-3">Output Format</label>
-                            <div className="relative">
-                                <select
-                                    value={generationConfig.format}
-                                    onChange={e => setGenerationConfig(prev => ({ ...prev, format: e.target.value }))}
-                                    className="neu-input appearance-none cursor-pointer"
-                                >
-                                    <option value="alpaca">Alpaca</option>
-                                    <option value="sharegpt">ShareGPT</option>
-                                    <option value="openai">OpenAI Chat</option>
-                                </select>
-                                <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neu-dim pointer-events-none" />
-                            </div>
+                            <CustomSelect
+                                value={generationConfig.format}
+                                onChange={v => setGenerationConfig(prev => ({ ...prev, format: v }))}
+                                options={[
+                                    { value: 'alpaca', label: 'Alpaca' },
+                                    { value: 'sharegpt', label: 'ShareGPT' },
+                                    { value: 'openai', label: 'OpenAI Chat' },
+                                ]}
+                            />
                         </div>
                         <div className="col-span-full">
                             <label className="block text-xs font-bold text-neu-dim tracking-widest uppercase mb-3">Domain Context</label>
