@@ -15,4 +15,5 @@ Instructions:
   {{"question": "The generated question", "answer": "The generated answer"}}
 ]
 5. Do not include any explanation, only the raw JSON list.
-6. You should write answers in the form of full sentences.
+6. You should write answers in the form of full sentences and not 1 word answers.
+7. Answer the questions which acutally makes sense as its going to be a dataset

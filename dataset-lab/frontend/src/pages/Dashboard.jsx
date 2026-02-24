@@ -9,6 +9,7 @@ import ConfirmModal from '../components/ConfirmModal';
 export default function Dashboard() {
     const [newProjectName, setNewProjectName] = useState('');
     const [projectToDelete, setProjectToDelete] = useState(null);
+    const [createError, setCreateError] = useState('');
     const queryClient = useQueryClient();
     const toast = useToast();
 
@@ -22,7 +23,12 @@ export default function Dashboard() {
         onSuccess: () => {
             queryClient.invalidateQueries(['projects']);
             setNewProjectName('');
+            setCreateError('');
             toast.success(`Project "${newProjectName}" initialized successfully.`);
+        },
+        onError: (e) => {
+            const serverMsg = e.response?.data?.detail || e.message;
+            toast.error(`Create failed: ${serverMsg}`);
         }
     });
 
@@ -37,9 +43,20 @@ export default function Dashboard() {
 
     const handleCreate = (e) => {
         e.preventDefault();
-        if (newProjectName.trim()) {
-            createMutation.mutate(newProjectName);
+        setCreateError('');
+        const trimmedName = newProjectName.trim();
+        if (!trimmedName) return;
+
+        if (/[^a-zA-Z0-9\-_]/.test(trimmedName)) {
+            setCreateError('Invalid name. Only alphanumeric characters, hyphens, and underscores are allowed.');
+            return;
         }
+        if (projects.includes(trimmedName)) {
+            setCreateError('A project with this name already exists.');
+            return;
+        }
+
+        createMutation.mutate(trimmedName);
     };
 
     const handleDeleteClick = (e, name) => {
@@ -70,32 +87,42 @@ export default function Dashboard() {
             </div>
 
             {/* Create Form — centered */}
-            <form onSubmit={handleCreate} className="mb-14 flex items-center gap-4 w-full max-w-xl relative z-10 px-2">
-                <input
-                    type="text"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    placeholder="Nomenclature for new protocol..."
-                    className="flex-1 neu-input h-14 pl-6 text-lg placeholder-neu-dim/30 focus:text-neu-accent !rounded-2xl transition-all"
-                />
-                <button
-                    type="submit"
-                    disabled={createMutation.isPending}
-                    className={`group flex items-center justify-center gap-3 h-14 px-8 rounded-2xl font-bold tracking-widest text-[13px] uppercase shrink-0 transition-all duration-300 ${createMutation.isPending
+            <div className="mb-14 w-full max-w-xl relative z-10 px-2">
+                <form onSubmit={handleCreate} className="flex items-center gap-4 w-full">
+                    <input
+                        type="text"
+                        value={newProjectName}
+                        onChange={(e) => {
+                            setNewProjectName(e.target.value);
+                            if (createError) setCreateError('');
+                        }}
+                        placeholder="Nomenclature for new protocol..."
+                        className={`flex-1 neu-input h-14 pl-6 text-lg placeholder-neu-dim/30 focus:text-neu-accent !rounded-2xl transition-all ${createError ? 'border border-red-500/50 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : ''}`}
+                    />
+                    <button
+                        type="submit"
+                        disabled={createMutation.isPending}
+                        className={`group flex items-center justify-center gap-3 h-14 px-8 rounded-2xl font-bold tracking-widest text-[13px] uppercase shrink-0 transition-all duration-300 ${createMutation.isPending
                             ? 'bg-[#15181b] text-neu-dim/30 shadow-[var(--sh-trough)] cursor-not-allowed border border-transparent'
                             : 'bg-neu-dark text-neu-dim shadow-[var(--sh-trough)] border border-transparent hover:border-neu-accent/30 hover:text-neu-text hover:shadow-[var(--sh-trough),_0_0_15px_rgba(255,107,0,0.1)] active:scale-[0.98]'
-                        }`}
-                >
-                    <FolderPlus
-                        size={18}
-                        strokeWidth={2}
-                        className={`transition-colors duration-300 ${createMutation.isPending ? '' : 'group-hover:text-neu-accent'}`}
-                    />
-                    <span className={`transition-colors duration-300 ${createMutation.isPending ? '' : 'group-hover:text-neu-accent'}`}>
-                        CREATE
-                    </span>
-                </button>
-            </form>
+                            }`}
+                    >
+                        <FolderPlus
+                            size={18}
+                            strokeWidth={2}
+                            className={`transition-colors duration-300 ${createMutation.isPending ? '' : 'group-hover:text-neu-accent'}`}
+                        />
+                        <span className={`transition-colors duration-300 ${createMutation.isPending ? '' : 'group-hover:text-neu-accent'}`}>
+                            CREATE
+                        </span>
+                    </button>
+                </form>
+                {createError && (
+                    <p className="absolute -bottom-6 left-6 text-red-400 text-[11px] font-mono tracking-wide">
+                        {createError}
+                    </p>
+                )}
+            </div>
 
             {/* Projects Grid */}
             {isLoading ? (
