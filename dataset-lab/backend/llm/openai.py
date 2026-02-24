@@ -37,7 +37,8 @@ class OpenAILLM(LLMProvider):
              payload["presence_penalty"] = config["presence_penalty"]
              
         try:
-            response = requests.post(url, headers=headers, json=payload)
+            # 5-minute timeout (300 seconds) to prevent infinite thread pool blocking
+            response = requests.post(url, headers=headers, json=payload, timeout=300)
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"]

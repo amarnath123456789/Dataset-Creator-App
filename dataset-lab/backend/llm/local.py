@@ -38,6 +38,8 @@ class LocalLLM(LLMProvider):
             response.raise_for_status()
             data = response.json()
             return data.get("response", "")
+        except requests.exceptions.Timeout:
+            raise TimeoutError(f"Request to Local LLM at {url} timed out after 300 seconds.")
         except Exception as e:
             raise RuntimeError(f"Error calling Local LLM: {str(e)}")
 

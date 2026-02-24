@@ -30,28 +30,33 @@ class Exporter:
         with open(qa_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
             
-        export_path = project_path / f"export_{format}.jsonl"
+        export_type = formats[format].get("type", "jsonl")
+        export_ext = "json" if export_type == "json" else "jsonl"
+        export_path = project_path / f"export_{format}.{export_ext}"
         
         with open(export_path, 'w', encoding='utf-8') as f:
-            for item in data:
-                # Transform item using template checking for placeholders
-                # We do a simple recursive replacement or string dump replacement?
-                # The template structure might be complex (nested dicts/lists).
-                # String conversion and replace might be easiest but risky for JSON structure.
-                # Constructing the object is safer.
-                
-                transformed_item = self._transform(template, item)
-                f.write(json.dumps(transformed_item) + "\n")
+            if export_type == "json":
+                # JSON array output
+                transformed_data = [self._transform(template, item) for item in data]
+                json.dump(transformed_data, f, indent=2)
+            else:
+                # Default to JSONL output
+                for item in data:
+                    transformed_item = self._transform(template, item)
+                    f.write(json.dumps(transformed_item) + "\n")
                 
         return export_path
 
     def _transform(self, template: Any, data: Dict[str, str]) -> Any:
         if isinstance(template, str):
-            # Replace placeholders
-            # We only expect {question} and {answer}
             val = template
-            val = val.replace("{question}", data.get("question", ""))
-            val = val.replace("{answer}", data.get("answer", ""))
+            # Safely replace any format string placeholder present in the item dictionary
+            # Example: '{question}' -> data['question']
+            import re
+            placeholders = re.findall(r'\{(.*?)\}', val)
+            for p in placeholders:
+                if p in data:
+                    val = val.replace(f"{{{p}}}", str(data[p]))
             return val
         elif isinstance(template, dict):
             return {k: self._transform(v, data) for k, v in template.items()}

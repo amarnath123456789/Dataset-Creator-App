@@ -15,10 +15,17 @@ class GenerationEngine:
         self.formats_path = Path(__file__).parent.parent / "formats" / "formats.json"
         
     def _get_provider(self, config: GenerationConfig) -> LLMProvider:
-        if config.provider == "openai":
-            return OpenAILLM()
-        else:
-            return LocalLLM()
+        providers = {
+            "openai": OpenAILLM,
+            "ollama": LocalLLM,
+            "local": LocalLLM,
+        }
+        
+        provider_class = providers.get(config.provider.lower())
+        if not provider_class:
+            raise ValueError(f"Unsupported LLM provider: '{config.provider}'. Available: {list(providers.keys())}")
+            
+        return provider_class()
 
     def _write_error(self, project_path: Path, message: str):
         """Write a generation error to error.log so the UI can surface it."""
@@ -26,6 +33,25 @@ class GenerationEngine:
         logger.error(message)
         with open(error_log, "a", encoding="utf-8") as f:
             f.write(message + "\n")
+
+    def _atomic_write_json(self, file_path: Path, data: Any):
+        """Atomically write JSON to avoid read race conditions during front-end polling."""
+        import time
+        temp_path = file_path.with_suffix('.tmp')
+        try:
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2 if isinstance(data, list) else None)
+            # Retry loop for Windows strict file locking
+            for attempt in range(5):
+                try:
+                    temp_path.replace(file_path)
+                    break
+                except PermissionError:
+                    if attempt == 4:
+                        logger.error(f"Atomic write failed for {file_path} due to persistent lock.")
+                    time.sleep(0.1)
+        except Exception as e:
+            logger.error(f"Atomic write failed for {file_path}: {e}")
 
     def _write_progress(self, project_path: Path, done: int, total: int, status: str):
         """Write live progress info so the frontend can poll it."""
@@ -36,8 +62,7 @@ class GenerationEngine:
             "status": status,
         }
         try:
-            with open(project_path / "progress.json", "w", encoding="utf-8") as f:
-                json.dump(progress, f)
+            self._atomic_write_json(project_path / "progress.json", progress)
         except Exception:
             pass
 
@@ -92,8 +117,7 @@ class GenerationEngine:
         
         # Initialize / update qa_v1.json with whatever we already have
         qa_path = project_path / "qa_v1.json"
-        with open(qa_path, 'w', encoding='utf-8') as f:
-            json.dump(qa_results, f, indent=2)
+        self._atomic_write_json(qa_path, qa_results)
         
         self._write_progress(project_path, resume_from, total, "starting")
         
@@ -105,8 +129,7 @@ class GenerationEngine:
                 # Save partial results if any
                 if qa_results:
                     partial_path = project_path / "qa_partial.json"
-                    with open(partial_path, 'w', encoding='utf-8') as f:
-                        json.dump(qa_results, f, indent=2)
+                    self._atomic_write_json(partial_path, qa_results)
                 
                 # Clean up lock files
                 if (project_path / ".running").exists():
@@ -161,33 +184,43 @@ class GenerationEngine:
             
             # Parse JSON from response
             try:
-                json_match = re.search(r'\[.*?\]', response_text, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(0)
-                    qas = json.loads(json_str)
+                qas = None
+                # First, try to parse the whole response naked
+                try:
+                    qas = json.loads(response_text.strip())
+                except json.JSONDecodeError:
+                    # Fallback: robust extraction of a JSON array containing objects
+                    json_match = re.search(r'\[\s*\{.*\}\s*\]', response_text, re.DOTALL)
+                    if json_match:
+                        try:
+                            qas = json.loads(json_match.group(0))
+                        except json.JSONDecodeError as e:
+                            err = f"[Generation] Nested JSON parse error for chunk {chunk['chunk_id']}: {e}"
+                            chunk_errors.append(err)
+                            logger.warning(err)
+                    else:
+                        err = f"[Generation] No JSON array found in LLM response for chunk {chunk['chunk_id']}. Response: {response_text[:200]}"
+                        chunk_errors.append(err)
+                        logger.warning(err)
+
+                if qas is not None:
                     if isinstance(qas, list):
                         for qa in qas:
                             qa['chunk_id'] = chunk['chunk_id']
                             qa_results.append(qa)
                         # ── Incremental save after every successful chunk ──
-                        with open(qa_path, 'w', encoding='utf-8') as f:
-                            json.dump(qa_results, f, indent=2)
+                        self._atomic_write_json(qa_path, qa_results)
                     else:
                         err = f"[Generation] Unexpected JSON type for chunk {chunk['chunk_id']}: got {type(qas).__name__}"
                         chunk_errors.append(err)
                         logger.warning(err)
-                else:
-                    err = f"[Generation] No JSON array found in LLM response for chunk {chunk['chunk_id']}. Response: {response_text[:200]}"
-                    chunk_errors.append(err)
-                    logger.warning(err)
             except Exception as e:
-                err = f"[Generation] JSON parse error for chunk {chunk['chunk_id']}: {e}"
+                err = f"[Generation] Unexpected extraction error for chunk {chunk['chunk_id']}: {e}"
                 chunk_errors.append(err)
                 logger.warning(err)
 
         # 5. Final save (covers edge case where last chunk had no new QAs)
-        with open(qa_path, 'w', encoding='utf-8') as f:
-            json.dump(qa_results, f, indent=2)
+        self._atomic_write_json(qa_path, qa_results)
 
         # Clean up any stale .stop file if generation finished normally
         stop_path = project_path / ".stop"

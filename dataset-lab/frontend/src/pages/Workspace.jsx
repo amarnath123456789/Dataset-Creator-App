@@ -462,16 +462,30 @@ export default function Workspace() {
                                             try {
                                                 const fmt = generationConfig.format;
                                                 const response = await projectApi.export(name, fmt);
+                                                const contentType = response.headers['content-type'];
+                                                const isJson = contentType && contentType.includes('application/json');
+                                                const ext = isJson ? 'json' : 'jsonl';
+
                                                 const url = window.URL.createObjectURL(response.data);
                                                 const link = document.createElement('a');
                                                 link.href = url;
-                                                link.setAttribute('download', `${name}_${fmt}.jsonl`);
+                                                link.setAttribute('download', `${name}_${fmt}.${ext}`);
                                                 document.body.appendChild(link);
                                                 link.click();
                                                 toast.success('Dataset exported successfully.');
                                             } catch (e) {
-                                                const serverMsg = e.response?.data?.detail || e.message;
-                                                toast.error(`Export failed: ${serverMsg}`);
+                                                if (e.response?.data instanceof Blob) {
+                                                    const text = await e.response.data.text();
+                                                    try {
+                                                        const json = JSON.parse(text);
+                                                        toast.error(`Export failed: ${json.detail || 'Unknown error'}`);
+                                                    } catch {
+                                                        toast.error(`Export failed: ${text}`);
+                                                    }
+                                                } else {
+                                                    const serverMsg = e.response?.data?.detail || e.message;
+                                                    toast.error(`Export failed: ${serverMsg}`);
+                                                }
                                             }
                                         }}
                                         disabled={!status?.has_qa}

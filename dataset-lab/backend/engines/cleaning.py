@@ -23,34 +23,40 @@ class CleaningEngine:
             lines = [line for line in lines if line.strip() not in repeated_headers]
             
         cleaned_lines = []
+        short_line_buffer = []
+        
         for line in lines:
             original_line = line
             line = line.strip()
             
             # 4. Artifact Removal
             # Remove non-printable characters (keep ASCII + common unicode)
-            # This regex keeps printable characters. We might want to be more permissive for unicode text.
-            # But prompt says "Remove broken characters". Let's stick to simple ASCII + basic latin for now
-            # or just remove specific control chars.
-            # Let's remove non-printable chars except newlines/tabs
             line = "".join(ch for ch in line if ch.isprintable())
             
             # 5. Bullet Normalization
-            # Change •, -, * at start to "* "
             if re.match(r'^[\u2022\-\*]\s+', line):
                 line = re.sub(r'^[\u2022\-\*]\s+', '* ', line)
                 
             # 6. Noise Filtering
-            # Remove lines < 3 words. 
-            # Protect bullet points? Prompt didn't specify. Assuming "noise" means garbage text.
+            # Instead of dropping < 3 word lines (which deletes headings),
+            # we buffer them if they contain alphanumeric content, and prepend them to the next valid line.
             words = line.split()
             if len(words) < 3:
-                # Optional: Protect headings? (Usually headings are short but important)
-                # Strict prompt: "Remove extremely short lines that contain fewer than 3 words"
-                # I will follow strict prompt.
+                if re.search(r'[a-zA-Z0-9]', line):
+                    short_line_buffer.append(line)
                 continue
                 
+            if short_line_buffer:
+                line = " ".join(short_line_buffer) + " " + line
+                short_line_buffer = []
+                
             cleaned_lines.append(line)
+            
+        if short_line_buffer:
+            if cleaned_lines:
+                cleaned_lines[-1] += " " + " ".join(short_line_buffer)
+            else:
+                cleaned_lines.append(" ".join(short_line_buffer))
             
         text = '\n'.join(cleaned_lines)
         
