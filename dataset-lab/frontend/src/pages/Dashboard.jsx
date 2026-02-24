@@ -3,10 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectApi } from '../api/api';
 import { Link } from 'react-router-dom';
 import { FolderPlus, Folder, Trash2 } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function Dashboard() {
     const [newProjectName, setNewProjectName] = useState('');
+    const [projectToDelete, setProjectToDelete] = useState(null);
     const queryClient = useQueryClient();
+    const toast = useToast();
 
     const { data: projects = [], isLoading } = useQuery({
         queryKey: ['projects'],
@@ -18,6 +22,7 @@ export default function Dashboard() {
         onSuccess: () => {
             queryClient.invalidateQueries(['projects']);
             setNewProjectName('');
+            toast.success(`Project "${newProjectName}" initialized successfully.`);
         }
     });
 
@@ -25,8 +30,9 @@ export default function Dashboard() {
         mutationFn: (name) => projectApi.delete(name),
         onSuccess: () => {
             queryClient.invalidateQueries(['projects']);
+            toast.info(`Project deleted permanently.`);
         },
-        onError: (e) => alert(`Delete failed: ${e.message}`)
+        onError: (e) => toast.error(`Delete failed: ${e.message}`)
     });
 
     const handleCreate = (e) => {
@@ -36,11 +42,16 @@ export default function Dashboard() {
         }
     };
 
-    const handleDelete = (e, name) => {
+    const handleDeleteClick = (e, name) => {
         e.preventDefault(); // Prevent Link navigation
         e.stopPropagation();
-        if (window.confirm(`Are you sure you want to permanently delete "${name}" and all its data?`)) {
-            deleteMutation.mutate(name);
+        setProjectToDelete(name);
+    };
+
+    const confirmDelete = () => {
+        if (projectToDelete) {
+            deleteMutation.mutate(projectToDelete);
+            setProjectToDelete(null);
         }
     };
 
@@ -59,24 +70,30 @@ export default function Dashboard() {
             </div>
 
             {/* Create Form — centered */}
-            <form onSubmit={handleCreate} className="mb-14 flex gap-4 w-full max-w-xl relative z-10 px-2">
-                <div className="relative flex-1 group">
-                    <input
-                        type="text"
-                        value={newProjectName}
-                        onChange={(e) => setNewProjectName(e.target.value)}
-                        placeholder="Nomenclature for new protocol..."
-                        className="neu-input h-14 pl-6 text-lg placeholder-neu-dim/30 bg-neu-base focus:text-neu-accent"
-                    />
-                    <div className="absolute inset-0 rounded-2xl pointer-events-none border border-white/5 group-hover:border-white/10 transition-colors"></div>
-                </div>
+            <form onSubmit={handleCreate} className="mb-14 flex items-center gap-4 w-full max-w-xl relative z-10 px-2">
+                <input
+                    type="text"
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    placeholder="Nomenclature for new protocol..."
+                    className="flex-1 neu-input h-14 pl-6 text-lg placeholder-neu-dim/30 focus:text-neu-accent !rounded-2xl transition-all"
+                />
                 <button
                     type="submit"
                     disabled={createMutation.isPending}
-                    className="neu-btn neu-btn-primary h-14 px-7 gap-3 rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-black/20 shrink-0"
+                    className={`group flex items-center justify-center gap-3 h-14 px-8 rounded-2xl font-bold tracking-widest text-[13px] uppercase shrink-0 transition-all duration-300 ${createMutation.isPending
+                            ? 'bg-[#15181b] text-neu-dim/30 shadow-[var(--sh-trough)] cursor-not-allowed border border-transparent'
+                            : 'bg-neu-dark text-neu-dim shadow-[var(--sh-trough)] border border-transparent hover:border-neu-accent/30 hover:text-neu-text hover:shadow-[var(--sh-trough),_0_0_15px_rgba(255,107,0,0.1)] active:scale-[0.98]'
+                        }`}
                 >
-                    <FolderPlus size={20} strokeWidth={2} />
-                    <span className="font-semibold tracking-wide text-sm">INITIALIZE</span>
+                    <FolderPlus
+                        size={18}
+                        strokeWidth={2}
+                        className={`transition-colors duration-300 ${createMutation.isPending ? '' : 'group-hover:text-neu-accent'}`}
+                    />
+                    <span className={`transition-colors duration-300 ${createMutation.isPending ? '' : 'group-hover:text-neu-accent'}`}>
+                        CREATE
+                    </span>
                 </button>
             </form>
 
@@ -112,7 +129,7 @@ export default function Dashboard() {
 
                                 {/* Delete Button */}
                                 <button
-                                    onClick={(e) => handleDelete(e, name)}
+                                    onClick={(e) => handleDeleteClick(e, name)}
                                     disabled={deleteMutation.isPending}
                                     title="Purge Protocol"
                                     className="absolute -top-3 -right-3 w-10 h-10 rounded-full bg-neu-base shadow-[5px_5px_10px_#16191c,-5px_-5px_10px_#2c3036] flex items-center justify-center text-neu-dim hover:text-red-500 hover:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.5)] opacity-0 group-hover:opacity-100 transition-all duration-300 z-20 hover:scale-110"
@@ -133,6 +150,16 @@ export default function Dashboard() {
                     </div>
                 </div>
             )}
+
+            <ConfirmModal
+                isOpen={!!projectToDelete}
+                title="Purge Protocol Data"
+                message={`Are you sure you want to permanently delete "${projectToDelete}"? This action cannot be reversed.`}
+                confirmText="Purge"
+                variant="danger"
+                onConfirm={confirmDelete}
+                onCancel={() => setProjectToDelete(null)}
+            />
         </div>
     );
 }

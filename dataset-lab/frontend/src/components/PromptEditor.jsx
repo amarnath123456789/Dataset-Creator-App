@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { llmApi } from '../api/api';
 import { Save, RefreshCw, AlertCircle, Info, CheckCircle, RotateCcw } from 'lucide-react';
+import { useToast } from './Toast';
+import ConfirmModal from './ConfirmModal';
 
 export default function PromptEditor() {
     const [prompt, setPrompt] = useState('');
+    const [showResetModal, setShowResetModal] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
     const [saved, setSaved] = useState(false);
     const queryClient = useQueryClient();
+    const toast = useToast();
 
     const { data, isLoading } = useQuery({
         queryKey: ['prompt'],
@@ -27,11 +31,10 @@ export default function PromptEditor() {
             setSaved(true);
             setTimeout(() => setSaved(false), 2500);
         },
-        onError: (e) => alert(`Failed to save prompt: ${e.message}`)
+        onError: (e) => toast.error(`Failed to save prompt: ${e.message}`)
     });
 
     const handleReset = () => {
-        if (!confirm('Reset to default prompt? This will overwrite your changes.')) return;
         const defaultPrompt =
             `Context Domain: {domain}.
 
@@ -53,6 +56,7 @@ Instructions:
 `;
         setPrompt(defaultPrompt);
         setIsDirty(true);
+        setShowResetModal(false);
     };
 
     if (isLoading) return (
@@ -79,7 +83,7 @@ Instructions:
 
                 <div className="flex items-center gap-3 pt-1 flex-shrink-0">
                     <button
-                        onClick={handleReset}
+                        onClick={() => setShowResetModal(true)}
                         className="neu-btn-sm"
                     >
                         <RotateCcw size={11} />
@@ -149,6 +153,16 @@ Instructions:
                     </p>
                 </div>
             </div>
+
+            <ConfirmModal
+                isOpen={showResetModal}
+                title="Reset Prompt Template"
+                message="Are you sure you want to revert to the default prompt? Any custom instructions you've added here will be lost."
+                confirmText="Reset"
+                variant="warn"
+                onConfirm={handleReset}
+                onCancel={() => setShowResetModal(false)}
+            />
         </div>
     );
 }

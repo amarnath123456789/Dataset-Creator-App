@@ -7,6 +7,7 @@ import {
     CheckCircle, AlertCircle, Clock, Layers, MessageSquare,
     FileText, BarChart2, Loader2, Check, Square
 } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 function copyToClipboard(text) {
     navigator.clipboard.writeText(text).catch(() => {
@@ -468,6 +469,7 @@ function QAPairsSection({ projectName, hasQA, progress, stopped, finished }) {
 
 // ─── Main Debug Dashboard ─────────────────────────────────────────────────────
 export default function DebugDashboard({ projectName, status, stopMutation }) {
+    const [showStopModal, setShowStopModal] = useState(false);
     const queryClient = useQueryClient();
 
     // Auto-refresh QA list when pipeline finishes
@@ -511,11 +513,7 @@ export default function DebugDashboard({ projectName, status, stopMutation }) {
                             </div>
 
                             <button
-                                onClick={() => {
-                                    if (window.confirm('Stop the pipeline?\n\nAll QA pairs generated so far will be saved. You can resume later.')) {
-                                        stopMutation?.mutate();
-                                    }
-                                }}
+                                onClick={() => setShowStopModal(true)}
                                 disabled={stopMutation?.isPending}
                                 style={{
                                     background: stopMutation?.isPending ? 'rgba(239,68,68,0.15)' : 'linear-gradient(135deg,rgba(239,68,68,0.85),rgba(185,28,28,0.95))',
@@ -621,6 +619,19 @@ export default function DebugDashboard({ projectName, status, stopMutation }) {
             <ChunkingSection projectName={projectName} hasChunks={status?.has_chunks} />
             <QAPairsSection projectName={projectName} hasQA={status?.has_qa}
                 progress={status?.progress} stopped={status?.stopped} finished={status?.finished} />
+
+            <ConfirmModal
+                isOpen={showStopModal}
+                title="Halt Pipeline Generation"
+                message="Are you sure you want to stop the pipeline? All QA pairs generated so far will be saved. You can safely resume later."
+                confirmText="Halt Pipeline"
+                variant="warn"
+                onConfirm={() => {
+                    stopMutation?.mutate();
+                    setShowStopModal(false);
+                }}
+                onCancel={() => setShowStopModal(false)}
+            />
         </div>
     );
 }
