@@ -33,6 +33,9 @@ Before proceeding, ensure you have the following installed on your machine:
 3. **Ollama** (Optional but Recommended): For running local open-source LLMs entirely on your machine. [Download Ollama](https://ollama.com/download)
 
 ---
+## 🎞️ Screenshots
+![Screenshot]()
+---
 
 ## 🚀 Environment Setup
 
