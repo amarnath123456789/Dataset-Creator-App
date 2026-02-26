@@ -34,7 +34,14 @@ Before proceeding, ensure you have the following installed on your machine:
 
 ---
 ## 🎞️ Screenshots
-![Screenshot]()
+![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img1.png)
+![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img2.png)
+![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img3.png)
+![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img4.png)
+![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img5.png)
+![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img6.png)
+![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img7.png)
+![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img8.png)
 ---
 
 ## 🚀 Environment Setup
