@@ -12,7 +12,7 @@ const OPENAI_MODELS = [
 
 // ─── Slider ───────────────────────────────────────────────────────────────────
 
-function Slider({ label, min, max, step, value, onChange }) {
+export function Slider({ label, min, max, step, value, onChange, disabled }) {
     const trackRef = useRef(null);
     const isDragging = useRef(false);
     const [active, setActive] = React.useState(false);
@@ -26,7 +26,7 @@ function Slider({ label, min, max, step, value, onChange }) {
     }, [min, max, step]);
 
     const handlePointerMove = useCallback((e) => {
-        if (!trackRef.current) return;
+        if (!trackRef.current || disabled) return;
         const rect = trackRef.current.getBoundingClientRect();
         // Calculate clamped ratio strictly between 0 and 1
         const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
@@ -39,11 +39,12 @@ function Slider({ label, min, max, step, value, onChange }) {
     }, [min, max, clamp, onChange]);
 
     const onPointerDown = useCallback((e) => {
+        if (disabled) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         isDragging.current = true;
         setActive(true);
         handlePointerMove(e);
-    }, [handlePointerMove]);
+    }, [disabled, handlePointerMove]);
 
     const onPointerMove = useCallback((e) => {
         if (!isDragging.current) return;
@@ -82,7 +83,7 @@ function Slider({ label, min, max, step, value, onChange }) {
             {/* Track area — captures pointer events */}
             <div
                 ref={trackRef}
-                className="relative h-10 flex items-center cursor-pointer touch-none"
+                className={`relative h-10 flex items-center touch-none ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}

@@ -4,11 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectApi } from '../api/api';
 import {
     ArrowLeft, Play, Upload, Settings, FileText, Download,
-    CheckCircle, AlertCircle, Loader2, BarChart2, Square, Zap
+    CheckCircle, AlertCircle, Loader2, BarChart2, Square, Zap, Globe
 } from 'lucide-react';
 import SettingsPanel from '../components/SettingsPanel';
 import DebugDashboard from '../components/DebugDashboard';
 import PromptEditor from '../components/PromptEditor';
+import ScrapingDashboard from './ScrapingDashboard';
 import { useToast } from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -105,6 +106,7 @@ export default function Workspace() {
 
     const tabs = [
         { id: 'upload', label: 'Upload', icon: Upload },
+        { id: 'scrape', label: 'Scraper', icon: Globe },
         { id: 'settings', label: 'Settings', icon: Settings },
         { id: 'prompt', label: 'Prompt', icon: FileText },
         { id: 'run', label: 'Run Pipeline', icon: Play },
@@ -195,7 +197,7 @@ export default function Workspace() {
                     <div className="flex gap-6">
                         {/* ── Sidebar ────────────────────────────────────────── */}
                         <div className="w-52 flex-shrink-0 flex flex-col gap-3">
-                            {tabs.map((tab, idx) => {
+                            {tabs.map((tab) => {
                                 const isActive = activeTab === tab.id;
                                 return (
                                     <button
@@ -309,6 +311,11 @@ export default function Workspace() {
                                         </div>
                                     )}
                                 </div>
+                            )}
+
+                            {/* ▸ SCRAPER */}
+                            {activeTab === 'scrape' && (
+                                <ScrapingDashboard />
                             )}
 
                             {/* ▸ SETTINGS */}

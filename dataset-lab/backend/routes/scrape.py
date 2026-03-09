@@ -1,0 +1,120 @@
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import List, Optional
+import shutil
+import os
+from backend.utils.filesystem import get_project_path
+from backend.engines.scraping.manager import manager, ScrapeRequest
+
+router = APIRouter()
+
+@router.post("/start")
+async def start_scraping_job(request: ScrapeRequest):
+    """
+    Start a new scraping background job.
+    """
+    if not request.urls and not request.query and not request.category:
+        raise HTTPException(status_code=400, detail="Must provide at least one of: urls, query, or category.")
+        
+    task_id = manager.start_job(request)
+    return {"message": "Scraping job started successfully.", "task_id": task_id}
+
+@router.get("/status/{task_id}")
+async def get_scraping_status(task_id: str):
+    """
+    Check the progress and logs of a scraping job.
+    """
+    status = manager.get_job_status(task_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    return status
+
+@router.post("/cancel/{task_id}")
+async def cancel_scraping_job(task_id: str):
+    """
+    Cancel an ongoing scraping job.
+    """
+    manager.cancel_job(task_id)
+    return {"message": "Cancellation requested for task."}
+
+@router.get("/preview/{project_name}")
+async def get_scrape_preview(project_name: str):
+    """
+    Get a preview of the scraped text and images for a project.
+    """
+    project_dir = get_project_path(project_name)
+    raw_file = project_dir / "raw.txt"
+    images_dir = project_dir / "scraped" / "images"
+    
+    text_preview = ""
+    if raw_file.exists():
+        with open(raw_file, "r", encoding="utf-8") as f:
+            f.seek(0, 2) # Move to end of file
+            file_size = f.tell()
+            # Read the last 2000 characters for the preview
+            seek_pos = max(0, file_size - 2000)
+            f.seek(seek_pos)
+            text_preview = f.read()
+            if seek_pos > 0:
+                # Truncate at the first newline to avoid partial lines if possible
+                first_newline = text_preview.find('\n')
+                if first_newline != -1:
+                    text_preview = "...\n" + text_preview[first_newline+1:]
+                else:
+                    text_preview = "...\n" + text_preview
+    
+    image_files = []
+    if images_dir.exists():
+        files_with_mtime = []
+        for f in images_dir.iterdir():
+            if f.is_file():
+                files_with_mtime.append((f, f.stat().st_mtime))
+        # Sort by mtime descending (newest first)
+        files_with_mtime.sort(key=lambda x: x[1], reverse=True)
+        image_files = [f[0].name for f in files_with_mtime[:12]]
+                    
+    return {"text": text_preview, "images": image_files}
+
+@router.get("/download/{project_name}")
+async def download_scrape_data(project_name: str):
+    """
+    Download the scraped text and images as a ZIP file.
+    """
+    import zipfile
+    project_dir = get_project_path(project_name)
+    scraped_dir = project_dir / "scraped"
+    zip_path = project_dir / "scrape_export.zip"
+    raw_file = project_dir / "raw.txt"
+    
+    if not scraped_dir.exists() and not raw_file.exists():
+        raise HTTPException(status_code=404, detail="Scraped data not found")
+        
+    # Manual zip generation to prevent grabbing other pipeline files (chunks.json, qa.json, error.logs)
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        if raw_file.exists():
+            zipf.write(raw_file, arcname="raw.txt")
+        if scraped_dir.exists():
+            for root, dirs, files in os.walk(scraped_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    # Create a friendly archive structure like 'images/img.jpg' or 'text/doc.json'
+                    arcname = os.path.relpath(file_path, scraped_dir)
+                    zipf.write(file_path, arcname=arcname)
+    
+    return FileResponse(
+        path=zip_path,
+        filename=f"{project_name}_scraped_data.zip",
+        media_type="application/zip"
+    )
+
+@router.get("/image/{project_name}/{image_name}")
+async def get_scraped_image(project_name: str, image_name: str):
+    """
+    Serve a scraped image file.
+    """
+    project_dir = get_project_path(project_name)
+    image_path = project_dir / "scraped" / "images" / image_name
+    if image_path.exists():
+        return FileResponse(image_path)
+    raise HTTPException(status_code=404, detail="Image not found")
