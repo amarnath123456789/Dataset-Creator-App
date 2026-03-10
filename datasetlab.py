@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""
+Dataset Lab — CLI runner
+Usage:
+    python datasetlab.py start    Start backend + frontend
+    python datasetlab.py stop     Stop running servers
+    python datasetlab.py status   Show server status
+    python datasetlab.py open     Open the app in your browser
+    python datasetlab.py logs     Tail live server logs
+"""
+
+import os
+import sys
+import subprocess
+import platform
+import time
+import signal
+import webbrowser
+from pathlib import Path
+
+# ── ANSI helpers ──────────────────────────────────────────────────────────────
+def _enable_color():
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetConsoleMode(
+                ctypes.windll.kernel32.GetStdHandle(-11), 7
+            )
+        except Exception:
+            return False
+    return True
+
+USE_COLOR = _enable_color()
+
+def c(text, code):
+    return f"\033[{code}m{text}\033[0m" if USE_COLOR else text
+
+def GREEN(t):  return c(t, "92")
+def YELLOW(t): return c(t, "93")
+def CYAN(t):   return c(t, "96")
+def RED(t):    return c(t, "91")
+def BOLD(t):   return c(t, "1")
+def DIM(t):    return c(t, "2")
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+REPO_ROOT    = Path(__file__).parent.resolve()
+APP_DIR      = REPO_ROOT / "dataset-lab"
+BACKEND_DIR  = APP_DIR / "backend"
+FRONTEND_DIR = APP_DIR / "frontend"
+VENV_DIR     = APP_DIR / ".venv"
+PID_DIR      = APP_DIR / ".pids"
+LOG_DIR      = APP_DIR / ".logs"
+
+BACKEND_PID  = PID_DIR / "backend.pid"
+FRONTEND_PID = PID_DIR / "frontend.pid"
+BACKEND_LOG  = LOG_DIR / "backend.log"
+FRONTEND_LOG = LOG_DIR / "frontend.log"
+
+BACKEND_URL  = "http://localhost:8000/docs"
+FRONTEND_URL = "http://localhost:5173"
+
+IS_WIN = platform.system() == "Windows"
+
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+def _resolve_venv_bin(name: str) -> Path:
+    """Resolve path to an executable inside the venv."""
+    if IS_WIN:
+        return VENV_DIR / "Scripts" / (name + ".exe")
+    return VENV_DIR / "bin" / name
+
+
+def _ensure_installed():
+    python_bin = _resolve_venv_bin("python")
+    npm_bin    = "npm.cmd" if IS_WIN else "npm"
+    if not python_bin.exists():
+        print(RED("  ✖  Virtual environment not found."))
+        print(f"  {DIM('Run:  python install.py  first.')}")
+        sys.exit(1)
+    node_modules = FRONTEND_DIR / "node_modules"
+    if not node_modules.exists():
+        print(RED("  ✖  Frontend node_modules not found."))
+        print(f"  {DIM('Run:  python install.py  first.')}")
+        sys.exit(1)
+
+
+def _read_pid(pid_file: Path):
+    if pid_file.exists():
+        try:
+            return int(pid_file.read_text().strip())
+        except ValueError:
+            pass
+    return None
+
+
+def _process_alive(pid: int) -> bool:
+    """Check if a process with the given PID is running."""
+    if pid is None:
+        return False
+    try:
+        if IS_WIN:
+            result = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}"],
+                capture_output=True, text=True
+            )
+            return str(pid) in result.stdout
+        else:
+            os.kill(pid, 0)
+            return True
+    except (ProcessLookupError, PermissionError, OSError):
+        return False
+
+
+def _kill_pid(pid: int):
+    try:
+        if IS_WIN:
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)],
+                           capture_output=True)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except Exception:
+        pass
+
+
+def _write_pid(pid_file: Path, pid: int):
+    PID_DIR.mkdir(exist_ok=True)
+    pid_file.write_text(str(pid))
+
+
+def _banner_line(msg: str):
+    print(f"\n  {BOLD(CYAN('▶'))}  {BOLD(msg)}")
+
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+def cmd_start():
+    _ensure_installed()
+    LOG_DIR.mkdir(exist_ok=True)
+    PID_DIR.mkdir(exist_ok=True)
+
+    # ── Check if already running ──
+    back_pid  = _read_pid(BACKEND_PID)
+    front_pid = _read_pid(FRONTEND_PID)
+
+    if _process_alive(back_pid) and _process_alive(front_pid):
+        print(YELLOW("\n  ⚠  Dataset Lab is already running."))
+        print(f"  {DIM(f'Backend:   {BACKEND_URL}')}")
+        print(f"  {DIM(f'Frontend:  {FRONTEND_URL}')}")
+        print(f"\n  Run {BOLD(CYAN('python datasetlab.py stop'))} to stop it first.\n")
+        return
+
+    print()
+    print(BOLD(CYAN("╔══════════════════════════════════════════════════════╗")))
+    print(BOLD(CYAN("║            Dataset Lab  ─  Starting…                 ║")))
+    print(BOLD(CYAN("╚══════════════════════════════════════════════════════╝")))
+
+    python_bin = str(_resolve_venv_bin("python"))
+    npm_bin    = "npm.cmd" if IS_WIN else "npm"
+
+    # ── Start Backend ──────────────────────────────────────────────────────────
+    _banner_line("Starting backend …")
+    backend_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    with open(BACKEND_LOG, "w") as log:
+        back_proc = subprocess.Popen(
+            [python_bin, "-m", "backend.main"],
+            cwd=str(APP_DIR),
+            env=backend_env,
+            stdout=log,
+            stderr=log,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if IS_WIN else 0,
+        )
+    _write_pid(BACKEND_PID, back_proc.pid)
+    print(f"  {GREEN('✔')}  Backend PID {back_proc.pid}  →  logs: {DIM(str(BACKEND_LOG))}")
+
+    # ── Start Frontend ─────────────────────────────────────────────────────────
+    _banner_line("Starting frontend …")
+    with open(FRONTEND_LOG, "w") as log:
+        front_proc = subprocess.Popen(
+            [npm_bin, "run", "dev"],
+            cwd=str(FRONTEND_DIR),
+            stdout=log,
+            stderr=log,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if IS_WIN else 0,
+        )
+    _write_pid(FRONTEND_PID, front_proc.pid)
+    print(f"  {GREEN('✔')}  Frontend PID {front_proc.pid}  →  logs: {DIM(str(FRONTEND_LOG))}")
+
+    # ── Wait a moment and confirm ──────────────────────────────────────────────
+    print(f"\n  {DIM('Waiting for servers to initialise (5s)…')}")
+    time.sleep(5)
+
+    back_ok  = _process_alive(back_proc.pid)
+    front_ok = _process_alive(front_proc.pid)
+
+    print()
+    status_icon = lambda ok: GREEN("✔ running") if ok else RED("✖ failed")
+    print(f"  Backend   [ {status_icon(back_ok)} ]   {CYAN(BACKEND_URL)}")
+    print(f"  Frontend  [ {status_icon(front_ok)} ]   {CYAN(FRONTEND_URL)}")
+
+    if back_ok and front_ok:
+        print()
+        print(BOLD(GREEN("  🎉  Dataset Lab is live!  Opening browser…")))
+        time.sleep(1)
+        webbrowser.open(FRONTEND_URL)
+    else:
+        print()
+        print(RED(f"  ✖  One or more servers failed to start."))
+        print(f"  Check logs:")
+        print(f"    Backend:  {BACKEND_LOG}")
+        print(f"    Frontend: {FRONTEND_LOG}")
+        print(f"  Or run:  {BOLD(CYAN('python datasetlab.py logs'))}")
+
+    print()
+    print(DIM("  Press Ctrl+C or run 'python datasetlab.py stop' to stop.\n"))
+
+
+def cmd_stop():
+    print()
+    back_pid  = _read_pid(BACKEND_PID)
+    front_pid = _read_pid(FRONTEND_PID)
+
+    stopped_any = False
+
+    if _process_alive(back_pid):
+        _kill_pid(back_pid)
+        BACKEND_PID.unlink(missing_ok=True)
+        print(f"  {GREEN('✔')}  Backend stopped  (PID {back_pid})")
+        stopped_any = True
+    else:
+        print(f"  {DIM('Backend not running — skipping.')}")
+
+    if _process_alive(front_pid):
+        _kill_pid(front_pid)
+        FRONTEND_PID.unlink(missing_ok=True)
+        print(f"  {GREEN('✔')}  Frontend stopped  (PID {front_pid})")
+        stopped_any = True
+    else:
+        print(f"  {DIM('Frontend not running — skipping.')}")
+
+    if stopped_any:
+        print(f"\n  {BOLD(GREEN('Dataset Lab stopped.'))}\n")
+    else:
+        print(f"\n  {YELLOW('⚠  Nothing was running.')}\n")
+
+
+def cmd_status():
+    print()
+    back_pid  = _read_pid(BACKEND_PID)
+    front_pid = _read_pid(FRONTEND_PID)
+
+    def row(name, pid, url):
+        alive = _process_alive(pid)
+        icon  = GREEN("● running") if alive else RED("○ stopped")
+        pid_s = f"(PID {pid})" if alive else ""
+        print(f"  {BOLD(name):12s}  {icon}  {pid_s}  {DIM(url)}")
+
+    print(BOLD("  Service     Status"))
+    print("  " + "─" * 54)
+    row("Backend",  back_pid,  BACKEND_URL)
+    row("Frontend", front_pid, FRONTEND_URL)
+
+    alive_count = sum([_process_alive(back_pid), _process_alive(front_pid)])
+    print()
+    if alive_count == 2:
+        print(f"  {GREEN('All systems operational.')}")
+    elif alive_count == 0:
+        print(f"  {YELLOW('Servers are not running.')}")
+        print(f"  Start with:  {BOLD(CYAN('python datasetlab.py start'))}")
+    else:
+        print(f"  {YELLOW('⚠  Some servers are not running.')}")
+        print(f"  Try restarting with:  {BOLD(CYAN('python datasetlab.py start'))}")
+    print()
+
+
+def cmd_open():
+    back_pid  = _read_pid(BACKEND_PID)
+    front_pid = _read_pid(FRONTEND_PID)
+    if not _process_alive(front_pid):
+        print(YELLOW(f"\n  ⚠  Frontend server doesn't appear to be running."))
+        print(f"  Starting Dataset Lab first with:  {BOLD(CYAN('python datasetlab.py start'))}\n")
+        return
+    print(f"\n  {GREEN('✔')}  Opening {CYAN(FRONTEND_URL)} …\n")
+    webbrowser.open(FRONTEND_URL)
+
+
+def cmd_logs():
+    """Tail backend and frontend logs in real time."""
+    print()
+    print(BOLD(CYAN("  ── Backend Log ─────────────────────────────────────")))
+    if BACKEND_LOG.exists():
+        print(DIM(BACKEND_LOG.read_text(encoding="utf-8", errors="replace")[-4000:]))
+    else:
+        print(DIM("  (no log file yet)"))
+
+    print()
+    print(BOLD(CYAN("  ── Frontend Log ────────────────────────────────────")))
+    if FRONTEND_LOG.exists():
+        print(DIM(FRONTEND_LOG.read_text(encoding="utf-8", errors="replace")[-4000:]))
+    else:
+        print(DIM("  (no log file yet)"))
+    print()
+
+
+HELP_TEXT = f"""
+{BOLD(CYAN('Dataset Lab CLI'))}
+
+Usage:
+  {BOLD('python datasetlab.py <command>')}
+
+Commands:
+  {BOLD(GREEN('start'))}    Start the backend and frontend servers
+  {BOLD(GREEN('stop'))}     Stop all running servers
+  {BOLD(GREEN('status'))}   Show current server status
+  {BOLD(GREEN('open'))}     Open the app in your default browser
+  {BOLD(GREEN('logs'))}     Show recent output from server logs
+
+Examples:
+  python datasetlab.py start
+  python datasetlab.py stop
+  python datasetlab.py status
+"""
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(HELP_TEXT)
+        return
+
+    cmd = sys.argv[1].lower()
+    dispatch = {
+        "start":  cmd_start,
+        "stop":   cmd_stop,
+        "status": cmd_status,
+        "open":   cmd_open,
+        "logs":   cmd_logs,
+    }
+
+    if cmd not in dispatch:
+        print(RED(f"\n  Unknown command: '{cmd}'\n"))
+        print(HELP_TEXT)
+        sys.exit(1)
+
+    try:
+        dispatch[cmd]()
+    except KeyboardInterrupt:
+        print("\n  Interrupted.\n")
+
+
+if __name__ == "__main__":
+    main()

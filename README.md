@@ -2,38 +2,72 @@
 
 <img src="./dataset-lab/frontend/public/vite.svg" alt="Dataset Lab Logo" width="100"/>
 
+**Dataset Lab** is a powerful, file-based dataset engineering system for creating, refining, and exporting high-quality instruction-style QA datasets. Built with Python/FastAPI (backend) and React/Vite (frontend).
+
+---
+
+## 🚀 Quick Start  *(3 commands)*
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/amarnath123456789/Dataset-Creator-App.git
+cd Dataset-Creator-App
+
+# 2. Install everything (Python venv + pip + npm — all automated)
+python install.py
+
+# 3. Start the app
+python datasetlab.py start
+```
+
+The app will open automatically at **http://localhost:5173** 🎉
+
+> **Windows users:** You can also just double-click **`start.bat`** — no terminal needed.
+
+---
+
+## 🖥️ CLI Reference
+
+```
+python datasetlab.py <command>
+```
+
+| Command | Description |
+|---------|-------------|
+| `start` | Start the backend + frontend servers |
+| `stop`  | Stop all running servers |
+| `status`| Show live server status |
+| `open`  | Open the app in your browser |
+| `logs`  | Show recent server log output |
+
+---
+
 ## 📖 Project Overview
 
-**Dataset Lab** is a powerful, file-based dataset engineering system designed to help you create, refine, and export high-quality instruction-style Question Answering (QA) datasets. Built with a modern tech stack (Python/FastAPI for the backend and React/Vite for the frontend), it provides a seamless multi-stage pipeline:
-
-1. **Upload & Chunking:** Ingest source documents and split them into manageable chunks.
-2. **Generation:** Leverage powerful Large Language Models (LLMs)—both local and cloud-based—to generate relevant QA pairs.
-3. **Refinement:** Clean, format, and filter the generated datasets.
-4. **Export:** Export robust datasets in various formats (JSON, JSONL, CSV) ready for fine-tuning.
-
-Dataset Lab ensures strict adherence to file-based state management, robust pipeline failure handling, and cross-platform compatibility.
+1. **Upload & Chunking** — Ingest source documents and split into manageable chunks.
+2. **Generation** — Use local or cloud LLMs to generate QA pairs.
+3. **Refinement** — Clean, filter, and format the generated datasets.
+4. **Export** — Export to JSON, JSONL, or CSV ready for fine-tuning.
 
 ---
 
 ## 💻 System Requirements
 
-- **Operating System:** Windows 10/11, macOS (M1/M2/Intel), or Linux.
-- **RAM:** Minimum 8GB. (16GB+ recommended if running local LLMs).
-- **Disk Space:** At least 2GB for the application. Additional space required for datasets and local LLMs (typically 4GB-10GB per model).
-- **Network:** Internet connection required for initial setup and downloading online models.
+| Requirement | Details |
+|-------------|---------|
+| OS | Windows 10/11, macOS (M1/M2/Intel), Linux |
+| Python | **3.9+** — [Download](https://www.python.org/downloads/) |
+| Node.js | **18+** — [Download](https://nodejs.org/en/download/) |
+| RAM | 8GB minimum (16GB+ recommended for local LLMs) |
+| Disk | 2GB+ for app; 4–10GB per local model |
+| Ollama | Optional — for offline local LLMs — [Download](https://ollama.com/download) |
+
+`install.py` checks all of these for you and will warn you if anything is missing.
 
 ---
 
-## 🛠️ Required Software Installations
-
-Before proceeding, ensure you have the following installed on your machine:
-
-1. **Python 3.9+**: For running the FastAPI backend. [Download Python](https://www.python.org/downloads/)
-2. **Node.js 18+**: For running the React frontend. [Download Node.js](https://nodejs.org/en/download/)
-3. **Ollama** (Optional but Recommended): For running local open-source LLMs entirely on your machine. [Download Ollama](https://ollama.com/download)
-
----
 ## 🎞️ Screenshots
+
 ![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img1.png)
 ![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img2.png)
 ![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img3.png)
@@ -42,222 +76,116 @@ Before proceeding, ensure you have the following installed on your machine:
 ![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img6.png)
 ![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img7.png)
 ![Screenshot](/dataset-lab/frontend/src/assets/screenshots/dlab-img8.png)
----
-
-## 🚀 Environment Setup
-
-### 1. Cloning the Repository
-
-Start by cloning the repository to your local machine:
-
-```bash
-git clone https://github.com/your-username/dataset-lab.git
-cd dataset-lab
-```
-
-*(Note: If you already have the source code downloaded, simply navigate to the `dataset-lab` root directory in your terminal).*
-
-### 2. Installing Dependencies
-
-You need to install dependencies for both the backend and frontend separately.
-
-#### Backend Setup
-
-Open a terminal in the root `dataset-lab` directory:
-
-```bash
-# Recommended: Create a virtual environment
-python -m venv venv
-
-# Activate the virtual environment
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
-
-# Install backend dependencies
-pip install -r backend/requirements.txt
-```
-
-#### Frontend Setup
-
-Open a **new** terminal, and navigate to the frontend directory:
-
-```bash
-cd dataset-lab/frontend
-
-# Install frontend dependencies
-npm install
-```
 
 ---
 
-## 🤖 Model Setup and Serving Instructions
+## ⚙️ Configuration (Environment Variables)
 
-Dataset Lab supports both online (e.g., OpenAI) and local LLMs. For offline, privacy-first dataset generation, we recommend **Ollama**.
-
-### Setting up Ollama
-1. Install Ollama from [ollama.com](https://ollama.com/).
-2. Open a terminal and download your preferred model. For example, to use Llama 3:
-   ```bash
-   ollama run llama3
-   ```
-   *This command downloads the model and starts the interactive prompt. You can type `/bye` to exit the prompt, but the Ollama service will remain running in the background.*
-3. Ensure the Ollama service is running (usually it runs on `http://localhost:11434`). Dataset Lab will automatically connect to it.
-
----
-
-## ⚙️ Configuration Steps & Environment Variables
-
-Create a file named `.env` in the **root directory** of the project (`dataset-lab/.env`).
-
-Here are the environment variables you can set:
+`install.py` creates the `.env` file for you automatically. You can also create or edit it manually at `dataset-lab/.env`:
 
 ```env
-# Document Processing Settings
+# Document Processing
 DEFAULT_CHUNK_SIZE=800
 DEFAULT_CHUNK_OVERLAP=100
 DEFAULT_SIMILARITY_THRESHOLD=0.92
 
-# External API Keys (Optional, only if using online models)
+# Cloud LLM API Keys (optional — only needed for cloud models)
 OPENAI_API_KEY=your_openai_api_key_here
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
-Dataset Lab is designed to work out-of-the-box with default settings, but you can tweak these values to optimize your chunking logic.
+---
+
+## 🤖 Using Local LLMs (Ollama)
+
+1. Install Ollama from [ollama.com](https://ollama.com/)
+2. Pull a model:
+   ```bash
+   ollama run llama3
+   ```
+3. Dataset Lab auto-detects Ollama at `http://localhost:11434`.
 
 ---
 
-## 🏃 Running the Application
+## 🏗️ Manual Setup (Advanced)
 
-To run Dataset Lab locally for development, you need to start both the backend and frontend servers.
-
-### 1. Running the Backend
-
-Open a terminal in the `dataset-lab` root directory, ensure your virtual environment is active, and run:
+If you prefer to set up manually without the installer:
 
 ```bash
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
-```
-You should see output indicating the API is running at `http://0.0.0.0:8000`.
-You can view the interactive API documentation at `http://localhost:8000/docs`.
+# Backend
+cd dataset-lab
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+source .venv/bin/activate     # macOS/Linux
+pip install -r backend/requirements.txt
 
-### 2. Running the Frontend
+# Frontend
+cd frontend
+npm install
 
-Open a **second terminal** in the `dataset-lab/frontend` directory and run:
+# Run backend
+python -m backend.main
 
-```bash
+# Run frontend (new terminal)
 npm run dev
 ```
-You should see output indicating the frontend is running (typically at `http://localhost:5173`). Open this URL in your browser to access the Dataset Lab UI!
 
 ---
 
-## 🏗️ Production Build Steps
-
-When you are ready to deploy the application in a production environment:
-
-1. **Frontend Build:**
-   ```bash
-   cd frontend
-   npm run build
-   ```
-   This generates a `dist` folder containing the optimized static assets.
-
-2. **Backend Execution:**
-   Do **not** use the `--reload` flag in production.
-   ```bash
-   python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
-   ```
-   *(For high performance, consider using `gunicorn` with `uvicorn` workers).*
-
----
-
-## 🌍 Deployment Instructions
-
-1. **Frontend:** You can host the contents of the `frontend/dist` directory using any static file server like **Nginx**, **Apache**, **Vercel**, or **Netlify**.
-2. **Backend:** Deploy the FastAPI backend to a server (e.g., AWS EC2, DigitalOcean, Render, or Railway). Ensure the backend server securely exposes port `8000` (or your configured port).
-3. **CORS:** Update `backend/main.py` CORS settings to restrict `allow_origins` to your production frontend domain instead of `["*"]`.
-
----
-
-## 🧪 Testing Instructions
-
-Currently, testing relies on manual verification and API testing.
-
-1. **API Testing:** Navigate to `http://localhost:8000/docs` while the backend is running. You can test all FastAPI endpoints directly from the Swagger UI.
-2. **End-to-End Flow:**
-   - Create a project in the UI.
-   - Upload a text or PDF file.
-   - Run the pipeline and ensure intermediate status indicators update.
-   - Verify that generated outputs exist in the project's folder within `dataset-lab/projects/`.
-
----
-
-## 🚑 Troubleshooting Section
-
-**1. Pipeline gets stuck in the "Running" state indefinitely.**
-- **Reason:** The server crashed mid-execution, and lock files were not cleanly removed.
-- **Fix:** Navigate to `dataset-lab/projects/<your-project-name>`. Manually delete the `.running` or `.stop` hidden files. Restart the backend server.
-
-**2. Cannot connect to Local LLMs (Ollama).**
-- **Reason:** Ollama service isn't running, or it's not exposed on the expected port.
-- **Fix:** Verify Ollama is running (`ollama run llama3` works). Ensure it is accessible at `http://localhost:11434`.
-
----
-
-## ❌ Common Errors and Fixes
-
-| Error Message | Cause | Solution |
-| :--- | :--- | :--- |
-| `[Errno 98] Address already in use` | Port 8000 or 5173 is occupied. | Kill the existing process holding the port or change the port (`--port 8080` for backend, `--port 3000` for frontend). |
-| `CORS Error in Browser Console` | Frontend Cannot connect to Backend. | Ensure backend is running. If backend is hosted elsewhere, update the `API_URL` environment variable for the frontend. |
-| `ModuleNotFoundError: No module named 'xyz'` | Missing Python package. | Make sure your virtual environment is activated and run `pip install -r backend/requirements.txt` again. |
-| `React/Vite error during npm run dev` | Missing Node modules. | Run `npm install` inside the `frontend` directory. |
-
----
-
-## 📁 Folder Structure Explanation
+## 📁 Folder Structure
 
 ```text
-dataset-lab/
-├── backend/                # FastAPI backend code
-│   ├── engines/            # LLM interaction & processing logic
-│   ├── formats/            # Export format templates
-│   ├── llm/                # LLM provider configurations
-│   ├── prompts/            # System & user prompt templates
-│   ├── routes/             # API endpoints (Projects, Pipeline, Export)
-│   ├── config.py           # Application settings & environment parsing
-│   ├── main.py             # FastAPI application entry point
-│   ├── models.py           # Pydantic data models
-│   └── requirements.txt    # Python dependencies
-├── frontend/               # React / Vite frontend code
-│   ├── public/             # Static public assets
-│   ├── src/                # React source code
-│   │   ├── components/     # Reusable UI components
-│   │   ├── pages/          # Full page views (Dashboard, Workspace)
-│   │   ├── index.css       # Global styles (Tailwind / Custom CSS)
-│   │   └── main.jsx        # React application entry point
-│   ├── package.json        # Node dependencies & scripts
-│   └── tailwind.config.js  # Tailwind CSS configuration
-├── projects/               # GENERATED by app: Stores all user project data files
-├── .env                    # Environment variables (Create this manually)
-└── README.md               # This documentation file
+Dataset-Creator-App/
+├── install.py          ← One-command installer
+├── datasetlab.py       ← CLI runner (start/stop/status/open/logs)
+├── start.bat           ← Windows double-click starter
+├── start.sh            ← macOS/Linux shell starter
+└── dataset-lab/
+    ├── backend/        ← FastAPI backend
+    │   ├── engines/    ← LLM & processing logic
+    │   ├── routes/     ← API endpoints
+    │   ├── main.py     ← Entry point
+    │   └── requirements.txt
+    ├── frontend/       ← React / Vite frontend
+    │   ├── src/
+    │   └── package.json
+    ├── projects/       ← Generated project data
+    ├── .venv/          ← Python virtual environment (created by installer)
+    ├── .logs/          ← Server logs (created on start)
+    └── .env            ← Your config (created by installer)
 ```
 
 ---
 
-## 🤝 Contribution Guidelines
+## 🚑 Troubleshooting
 
-We welcome contributions to Dataset Lab! If you'd like to help improve the project, please follow these steps:
-
-1. **Fork the repository.**
-2. **Create a new branch** for your feature or bugfix (`git checkout -b feature/awesome-new-feature`).
-3. **Commit your changes** with clear, descriptive commit messages.
-4. **Push your branch** to your fork (`git push origin feature/awesome-new-feature`).
-5. **Open a Pull Request** describing your changes in detail, why they were made, and how they solve the problem.
-6. Ensure your code follows the existing style, and test thoroughly before submitting!
+| Problem | Fix |
+|---------|-----|
+| `python install.py` fails | Ensure Python 3.9+ and Node 18+ are installed and on your PATH |
+| Pipeline stuck in "Running" | Delete `.running` / `.stop` files in `dataset-lab/projects/<project>/` |
+| Cannot connect to Ollama | Run `ollama run llama3` and verify it serves at `http://localhost:11434` |
+| Port 8000/5173 in use | Stop the conflicting process or change the port in `backend/main.py` |
+| Backend/frontend crashed | Run `python datasetlab.py logs` to see what went wrong |
 
 ---
 
-*Thank you for using Dataset Lab! If you encounter any bugs, please check the Troublsehooting section or run through to raise an issue.*
+## ❌ Common Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `ModuleNotFoundError` | Missing Python package | Run `python install.py` again |
+| `CORS Error` | Frontend can't reach backend | Make sure backend is running (`python datasetlab.py status`) |
+| `npm error: …` | Missing Node modules | Run `python install.py` again |
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository.
+2. Create a branch: `git checkout -b feature/awesome-feature`
+3. Commit with clear messages.
+4. Push and open a Pull Request.
+
+---
+
+*Thank you for using Dataset Lab! Found a bug? Open an issue on GitHub.*
