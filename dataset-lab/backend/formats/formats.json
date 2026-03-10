@@ -1,0 +1,37 @@
+{
+    "alpaca": {
+        "template": {
+            "instruction": "{question}",
+            "input": "",
+            "output": "{answer}"
+        }
+    },
+    "sharegpt": {
+        "template": {
+            "conversations": [
+                {
+                    "from": "human",
+                    "value": "{question}"
+                },
+                {
+                    "from": "gpt",
+                    "value": "{answer}"
+                }
+            ]
+        }
+    },
+    "openai": {
+        "template": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "{question}"
+                },
+                {
+                    "role": "assistant",
+                    "content": "{answer}"
+                }
+            ]
+        }
+    }
+}

@@ -1,0 +1,9 @@
+# Runtime generated project data
+projects/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
