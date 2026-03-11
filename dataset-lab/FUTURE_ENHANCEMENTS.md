@@ -10,7 +10,7 @@ If you are a contributor looking for ideas, this is the perfect place to start!
 
 Currently, Dataset Lab relies on basic file uploads (Text, PDF). Expanding ingestion capabilities will make the tool significantly more versatile.
 
-- [ ] **Web Scraping:** Add the ability to paste a URL (or list of URLs) and automatically extract text using tools like BeautifulSoup or Playwright.
+- [ Done ] **Web Scraping:** Add the ability to paste a URL (or list of URLs) and automatically extract text using tools like BeautifulSoup or Playwright.
 - [ ] **GitHub Repo Ingestion:** Allow users to point to a GitHub repository to generate documentation-based and code-based datasets automatically.
 - [ ] **Database Connections:** Integrate with PostgreSQL, MySQL, or MongoDB to pull raw data directly from existing databases.
 - [ ] **Smarter Chunking Strategies:** Implement semantic chunking (splitting by topic/meaning rather than just character count) or markdown-aware chunking (splitting by headers).
