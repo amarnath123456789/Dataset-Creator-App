@@ -73,7 +73,6 @@ def _resolve_venv_bin(name: str) -> Path:
 
 def _ensure_installed():
     python_bin = _resolve_venv_bin("python")
-    npm_bin    = "npm.cmd" if IS_WIN else "npm"
     if not python_bin.exists():
         print(RED("  ✖  Virtual environment not found."))
         print(f"  {DIM('Run:  python install.py  first.')}")
@@ -94,7 +93,7 @@ def _read_pid(pid_file: Path):
     return None
 
 
-def _process_alive(pid: int) -> bool:
+def _process_alive(pid) -> bool:
     """Check if a process with the given PID is running."""
     if pid is None:
         return False
@@ -128,6 +127,15 @@ def _write_pid(pid_file: Path, pid: int):
     pid_file.write_text(str(pid))
 
 
+def _port_open(port: int, host: str = "127.0.0.1") -> bool:
+    """Instant check — is the port currently accepting connections?"""
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
 def _wait_for_port(port: int, host: str = "127.0.0.1", timeout: int = 30) -> bool:
     """Poll a TCP port until it accepts connections or timeout is reached."""
     deadline = time.time() + timeout
@@ -140,13 +148,12 @@ def _wait_for_port(port: int, host: str = "127.0.0.1", timeout: int = 30) -> boo
     return False
 
 
-def _port_open(port: int, host: str = "127.0.0.1") -> bool:
-    """Instant check — is the port currently accepting connections?"""
-    try:
-        with socket.create_connection((host, port), timeout=0.5):
-            return True
-    except OSError:
-        return False
+def _tail_log(log_file: Path, lines: int = 25) -> str:
+    """Return the last N lines of a log file as a string."""
+    if not log_file.exists():
+        return "  (no log file found)"
+    content = log_file.read_text(encoding="utf-8", errors="replace").strip()
+    return "\n".join(content.splitlines()[-lines:]) if content else "  (log is empty)"
 
 
 def _banner_line(msg: str):
@@ -159,16 +166,28 @@ def cmd_start():
     LOG_DIR.mkdir(exist_ok=True)
     PID_DIR.mkdir(exist_ok=True)
 
-    # ── Check if already running ──
+    # ── Check if already running via PID ──────────────────────────────────────
     back_pid  = _read_pid(BACKEND_PID)
     front_pid = _read_pid(FRONTEND_PID)
-
     if _process_alive(back_pid) and _process_alive(front_pid):
         print(YELLOW("\n  ⚠  Dataset Lab is already running."))
         print(f"  {DIM(f'Backend:   {BACKEND_URL}')}")
         print(f"  {DIM(f'Frontend:  {FRONTEND_URL}')}")
         print(f"\n  Run {BOLD(CYAN('python datasetlab.py stop'))} to stop it first.\n")
         return
+
+    # ── Early port conflict check ──────────────────────────────────────────────
+    # Do this BEFORE spawning processes so the user gets a clear, actionable error.
+    for port, name in [(8000, "Backend (port 8000)"), (5173, "Frontend (port 5173)")]:
+        if _port_open(port):
+            print(YELLOW(f"\n  ⚠  {name} port is already in use by another process."))
+            print(f"  You likely have a dev server already running in another terminal.")
+            print(f"\n  To find and kill the process on port {port}:")
+            print(f"    {BOLD(f'netstat -ano | findstr :{port}')}")
+            print(f"    {BOLD('taskkill /PID <pid> /F')}")
+            print(f"\n  Or stop Dataset Lab's own servers first:")
+            print(f"    {BOLD(CYAN('python datasetlab.py stop'))}\n")
+            return
 
     print()
     print(BOLD(CYAN("╔══════════════════════════════════════════════════════╗")))
@@ -179,9 +198,9 @@ def cmd_start():
     npm_bin    = "npm.cmd" if IS_WIN else "npm"
 
     # ── Start Backend ──────────────────────────────────────────────────────────
-    # NOTE: We launch uvicorn directly (no --reload) so the PID stays stable.
-    # Using python -m backend.main triggers reload=True which re-forks uvicorn
-    # workers and the parent exits, making it look like the server failed.
+    # IMPORTANT: Launch uvicorn directly (no --reload flag).
+    # Running `python -m backend.main` uses reload=True which spawns child workers
+    # then the parent exits — making PID tracking think the server died.
     _banner_line("Starting backend …")
     backend_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     with open(BACKEND_LOG, "w") as log:
@@ -195,7 +214,7 @@ def cmd_start():
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if IS_WIN else 0,
         )
     _write_pid(BACKEND_PID, back_proc.pid)
-    print(f"  {GREEN('✔')}  Backend PID {back_proc.pid}  →  logs: {DIM(str(BACKEND_LOG))}")
+    print(f"  {GREEN('✔')}  Backend  PID {back_proc.pid}  →  {DIM(str(BACKEND_LOG))}")
 
     # ── Start Frontend ─────────────────────────────────────────────────────────
     _banner_line("Starting frontend …")
@@ -208,14 +227,25 @@ def cmd_start():
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if IS_WIN else 0,
         )
     _write_pid(FRONTEND_PID, front_proc.pid)
-    print(f"  {GREEN('✔')}  Frontend PID {front_proc.pid}  →  logs: {DIM(str(FRONTEND_LOG))}")
+    print(f"  {GREEN('✔')}  Frontend PID {front_proc.pid}  →  {DIM(str(FRONTEND_LOG))}")
 
-    # ── Wait and do a real port-reachability check ─────────────────────────────
-    # sentence-transformers + chromadb can take 10-15s on first import,
-    # so we poll until the port is up rather than using a fixed sleep.
+    # ── Wait with crash detection ──────────────────────────────────────────────
+    # sentence-transformers + chromadb can take 10-20s to import on cold start,
+    # so we poll instead of sleeping a fixed duration.
     print(f"\n  {DIM('Waiting for servers to come up (up to 30s)…')}")
-    back_ok  = _wait_for_port(8000, timeout=30)
-    front_ok = _wait_for_port(5173, timeout=30)
+
+    def wait_with_crash_detect(proc, port, timeout=30):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if _port_open(port):
+                return True
+            if proc.poll() is not None:   # process exited early = crash
+                return False
+            time.sleep(1)
+        return False
+
+    back_ok  = wait_with_crash_detect(back_proc,  8000)
+    front_ok = wait_with_crash_detect(front_proc, 5173)
 
     print()
     status_icon = lambda ok: GREEN("✔ running") if ok else RED("✖ failed")
@@ -229,11 +259,14 @@ def cmd_start():
         webbrowser.open(FRONTEND_URL)
     else:
         print()
-        print(RED(f"  ✖  One or more servers failed to start."))
-        print(f"  Check logs:")
-        print(f"    Backend:  {BACKEND_LOG}")
-        print(f"    Frontend: {FRONTEND_LOG}")
-        print(f"  Or run:  {BOLD(CYAN('python datasetlab.py logs'))}")
+        print(RED("  ✖  One or more servers failed to start."))
+        if not back_ok:
+            print(f"\n  {BOLD(YELLOW('── Backend error (last 25 lines) ─────────────────────────'))}")
+            print(DIM(_tail_log(BACKEND_LOG)))
+        if not front_ok:
+            print(f"\n  {BOLD(YELLOW('── Frontend error (last 25 lines) ────────────────────────'))}")
+            print(DIM(_tail_log(FRONTEND_LOG)))
+        print(f"\n  Full logs:  {BOLD(CYAN('python datasetlab.py logs'))}")
 
     print()
     print(DIM("  Press Ctrl+C or run 'python datasetlab.py stop' to stop.\n"))
@@ -301,31 +334,29 @@ def cmd_status():
 
 
 def cmd_open():
-    back_pid  = _read_pid(BACKEND_PID)
-    front_pid = _read_pid(FRONTEND_PID)
-    if not _process_alive(front_pid):
+    if not _port_open(5173):
         print(YELLOW(f"\n  ⚠  Frontend server doesn't appear to be running."))
-        print(f"  Starting Dataset Lab first with:  {BOLD(CYAN('python datasetlab.py start'))}\n")
+        print(f"  Start it with:  {BOLD(CYAN('python datasetlab.py start'))}\n")
         return
     print(f"\n  {GREEN('✔')}  Opening {CYAN(FRONTEND_URL)} …\n")
     webbrowser.open(FRONTEND_URL)
 
 
 def cmd_logs():
-    """Tail backend and frontend logs in real time."""
+    """Print backend and frontend log tails."""
     print()
     print(BOLD(CYAN("  ── Backend Log ─────────────────────────────────────")))
     if BACKEND_LOG.exists():
-        print(DIM(BACKEND_LOG.read_text(encoding="utf-8", errors="replace")[-4000:]))
+        print(DIM(BACKEND_LOG.read_text(encoding="utf-8", errors="replace")[-6000:]))
     else:
-        print(DIM("  (no log file yet)"))
+        print(DIM("  (no log file yet — run 'python datasetlab.py start' first)"))
 
     print()
     print(BOLD(CYAN("  ── Frontend Log ────────────────────────────────────")))
     if FRONTEND_LOG.exists():
-        print(DIM(FRONTEND_LOG.read_text(encoding="utf-8", errors="replace")[-4000:]))
+        print(DIM(FRONTEND_LOG.read_text(encoding="utf-8", errors="replace")[-6000:]))
     else:
-        print(DIM("  (no log file yet)"))
+        print(DIM("  (no log file yet — run 'python datasetlab.py start' first)"))
     print()
 
 
