@@ -1,5 +1,5 @@
 # Dataset Lab — Backend Dependencies
-# VERIFIED: each pip package name matched against actual import statements in the code.
+# VERIFIED against all imports in backend/*.py files
 
 # ── Web framework ─────────────────────────────────────────────────────────────
 fastapi
@@ -14,6 +14,7 @@ aiofiles
 # ── Web scraping ──────────────────────────────────────────────────────────────
 beautifulsoup4
 lxml
+lxml-html-clean          # required by readability-lxml (split from lxml v5.2+)
 readability-lxml
 ddgs
 
