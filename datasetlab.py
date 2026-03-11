@@ -14,6 +14,7 @@ import sys
 import subprocess
 import platform
 import time
+import socket
 import signal
 import webbrowser
 from pathlib import Path
@@ -127,6 +128,27 @@ def _write_pid(pid_file: Path, pid: int):
     pid_file.write_text(str(pid))
 
 
+def _wait_for_port(port: int, host: str = "127.0.0.1", timeout: int = 30) -> bool:
+    """Poll a TCP port until it accepts connections or timeout is reached."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return True
+        except OSError:
+            time.sleep(1)
+    return False
+
+
+def _port_open(port: int, host: str = "127.0.0.1") -> bool:
+    """Instant check — is the port currently accepting connections?"""
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
 def _banner_line(msg: str):
     print(f"\n  {BOLD(CYAN('▶'))}  {BOLD(msg)}")
 
@@ -157,11 +179,15 @@ def cmd_start():
     npm_bin    = "npm.cmd" if IS_WIN else "npm"
 
     # ── Start Backend ──────────────────────────────────────────────────────────
+    # NOTE: We launch uvicorn directly (no --reload) so the PID stays stable.
+    # Using python -m backend.main triggers reload=True which re-forks uvicorn
+    # workers and the parent exits, making it look like the server failed.
     _banner_line("Starting backend …")
     backend_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     with open(BACKEND_LOG, "w") as log:
         back_proc = subprocess.Popen(
-            [python_bin, "-m", "backend.main"],
+            [python_bin, "-m", "uvicorn", "backend.main:app",
+             "--host", "0.0.0.0", "--port", "8000"],
             cwd=str(APP_DIR),
             env=backend_env,
             stdout=log,
@@ -184,12 +210,12 @@ def cmd_start():
     _write_pid(FRONTEND_PID, front_proc.pid)
     print(f"  {GREEN('✔')}  Frontend PID {front_proc.pid}  →  logs: {DIM(str(FRONTEND_LOG))}")
 
-    # ── Wait a moment and confirm ──────────────────────────────────────────────
-    print(f"\n  {DIM('Waiting for servers to initialise (5s)…')}")
-    time.sleep(5)
-
-    back_ok  = _process_alive(back_proc.pid)
-    front_ok = _process_alive(front_proc.pid)
+    # ── Wait and do a real port-reachability check ─────────────────────────────
+    # sentence-transformers + chromadb can take 10-15s on first import,
+    # so we poll until the port is up rather than using a fixed sleep.
+    print(f"\n  {DIM('Waiting for servers to come up (up to 30s)…')}")
+    back_ok  = _wait_for_port(8000, timeout=30)
+    front_ok = _wait_for_port(5173, timeout=30)
 
     print()
     status_icon = lambda ok: GREEN("✔ running") if ok else RED("✖ failed")
@@ -247,18 +273,21 @@ def cmd_status():
     back_pid  = _read_pid(BACKEND_PID)
     front_pid = _read_pid(FRONTEND_PID)
 
-    def row(name, pid, url):
-        alive = _process_alive(pid)
+    def row(name, pid, port, url):
+        pid_alive = _process_alive(pid)
+        port_up   = _port_open(port)
+        alive = pid_alive or port_up
         icon  = GREEN("● running") if alive else RED("○ stopped")
-        pid_s = f"(PID {pid})" if alive else ""
+        pid_s = f"(PID {pid})" if pid_alive else ("(port open)" if port_up else "")
         print(f"  {BOLD(name):12s}  {icon}  {pid_s}  {DIM(url)}")
+        return alive
 
     print(BOLD("  Service     Status"))
     print("  " + "─" * 54)
-    row("Backend",  back_pid,  BACKEND_URL)
-    row("Frontend", front_pid, FRONTEND_URL)
+    back_alive  = row("Backend",  back_pid,  8000, BACKEND_URL)
+    front_alive = row("Frontend", front_pid, 5173, FRONTEND_URL)
 
-    alive_count = sum([_process_alive(back_pid), _process_alive(front_pid)])
+    alive_count = sum([back_alive, front_alive])
     print()
     if alive_count == 2:
         print(f"  {GREEN('All systems operational.')}")
