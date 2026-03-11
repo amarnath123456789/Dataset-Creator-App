@@ -211,7 +211,14 @@ def cmd_start():
     # Running `python -m backend.main` uses reload=True which spawns child workers
     # then the parent exits — making PID tracking think the server died.
     _banner_line("Starting backend …")
-    backend_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    
+    # Isolate environment to prevent parent shell Python paths from breaking the venv
+    backend_env = os.environ.copy()
+    backend_env["PYTHONUNBUFFERED"] = "1"
+    backend_env["PYTHONWARNINGS"] = "ignore"  # Hide non-fatal dependency warnings
+    for var in ["PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "__PYVENV_LAUNCHER__"]:
+        backend_env.pop(var, None)
+        
     with open(BACKEND_LOG, "w") as log:
         back_proc = subprocess.Popen(
             [python_bin, "-m", "uvicorn", "backend.main:app",
@@ -239,11 +246,11 @@ def cmd_start():
     print(f"  {GREEN('✔')}  Frontend PID {front_proc.pid}  →  {DIM(str(FRONTEND_LOG))}")
 
     # ── Wait with crash detection ──────────────────────────────────────────────
-    # sentence-transformers + chromadb can take 10-20s to import on cold start,
-    # so we poll instead of sleeping a fixed duration.
-    print(f"\n  {DIM('Waiting for servers to come up (up to 30s)…')}")
+    # sentence-transformers + chromadb can take up to 2 mins to download/import
+    # on cold start, so we poll instead of sleeping a fixed duration.
+    print(f"\n  {DIM('Waiting for servers to come up (up to 120s)…')}")
 
-    def wait_with_crash_detect(proc, port, timeout=30):
+    def wait_with_crash_detect(proc, port, timeout=120):
         deadline = time.time() + timeout
         while time.time() < deadline:
             if _port_open(port):
@@ -254,7 +261,7 @@ def cmd_start():
         return False
 
     back_ok  = wait_with_crash_detect(back_proc,  8000)
-    front_ok = wait_with_crash_detect(front_proc, 5173)
+    front_ok = wait_with_crash_detect(front_proc, 5173, timeout=60)
 
     print()
     status_icon = lambda ok: GREEN("✔ running") if ok else RED("✖ failed")
