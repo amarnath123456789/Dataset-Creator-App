@@ -128,23 +128,32 @@ def _write_pid(pid_file: Path, pid: int):
 
 
 def _port_open(port: int, host: str = "127.0.0.1") -> bool:
-    """Instant check — is the port currently accepting connections?"""
-    try:
-        with socket.create_connection((host, port), timeout=0.5):
-            return True
-    except OSError:
-        return False
+    """Instant check — is the port currently accepting connections?
+    Tries both IPv4 (127.0.0.1) and IPv6 (::1) since Vite on newer
+    Node versions may bind to IPv6 by default on Windows.
+    """
+    for h in ("127.0.0.1", "::1"):
+        try:
+            with socket.create_connection((h, port), timeout=0.5):
+                return True
+        except OSError:
+            pass
+    return False
 
 
 def _wait_for_port(port: int, host: str = "127.0.0.1", timeout: int = 30) -> bool:
-    """Poll a TCP port until it accepts connections or timeout is reached."""
+    """Poll a TCP port until it accepts connections or timeout is reached.
+    Tries both IPv4 and IPv6 for compatibility with Vite on Windows.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=1):
-                return True
-        except OSError:
-            time.sleep(1)
+        for h in ("127.0.0.1", "::1"):
+            try:
+                with socket.create_connection((h, port), timeout=1):
+                    return True
+            except OSError:
+                pass
+        time.sleep(1)
     return False
 
 

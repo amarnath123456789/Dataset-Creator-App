@@ -3,6 +3,9 @@ uvicorn[standard]
 requests
 sentence-transformers
 langchain
+langchain-text-splitters
+langchain-community
 tiktoken
 python-multipart
 chromadb
+pypdf
